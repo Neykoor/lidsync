@@ -22,7 +22,7 @@ LidSync es una librería avanzada que permite convertir identificadores privados
 
 ---
 
-# ⚠️ Regla Importante: "Ice-Breaking"
+## ⚠️ Regla Importante: "Ice-Breaking"
 
 Debido a la privacidad de WhatsApp:
 
