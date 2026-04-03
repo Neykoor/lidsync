@@ -1,5 +1,5 @@
 {
-  "name": "whispa-lid",
+  "name": "lidsync",
   "version": "1.0.0",
   "description": "Resuelve LIDs de WhatsApp a JIDs @s.whatsapp.net con cache y fallback a Baileys",
   "type": "module",
