@@ -15,6 +15,11 @@ function esJidResuelto(valor) {
   return typeof valor === "string" && valor.endsWith(SUFIJO_JID);
 }
 
+function limpiarJid(valor) {
+  if (typeof valor !== "string") return null;
+  return `${valor.split("@")[0].split(":")[0]}${SUFIJO_JID}`;
+}
+
 export class LidResolver {
   #cache;
   #sock;
@@ -51,22 +56,22 @@ export class LidResolver {
         jid = c.id;
       } else if (c.id && esLid(c.id) && c.phoneNumber) {
         lid = c.id;
-        jid = c.phoneNumber.includes('@') ? c.phoneNumber : `${c.phoneNumber}${SUFIJO_JID}`;
+        jid = c.phoneNumber; 
       } else if (c.lid && c.phoneNumber) {
         lid = c.lid;
-        jid = c.phoneNumber.includes('@') ? c.phoneNumber : `${c.phoneNumber}${SUFIJO_JID}`;
+        jid = c.phoneNumber;
       }
 
       if (lid && jid) {
         const lidNorm = String(lid).endsWith(SUFIJO_LID) ? String(lid) : `${lid}${SUFIJO_LID}`;
-        this.#reverseIndex.set(lidNorm, jid);
+        this.#reverseIndex.set(lidNorm, limpiarJid(jid));
       }
     }
   }
 
   async resolver(id) {
     if (!id || typeof id !== "string") return null;
-    if (esJidResuelto(id)) return id;
+    if (esJidResuelto(id)) return limpiarJid(id); 
     if (!esLid(id)) return null;
 
     const cached = this.#cache.get(id);
@@ -83,14 +88,14 @@ export class LidResolver {
       if (repo?.getPNForLID) {
         const pn = await repo.getPNForLID(id);
         if (pn) {
-          const jidReal = pn.endsWith(SUFIJO_JID) ? pn : `${pn}${SUFIJO_JID}`;
+          const jidReal = limpiarJid(pn);
           this.#reverseIndex.set(id, jidReal);
           this.#cache.set(id, jidReal);
           return jidReal;
         }
       }
     } catch (e) {
-      console.warn(`[whispa-lid] Error en signalRepository al resolver LID ${id}:`, e.message);
+      console.warn(`[LidSync] Error en signalRepository al resolver LID ${id}:`, e.message);
     }
 
     return null;
@@ -104,7 +109,7 @@ export class LidResolver {
 
     const ejecutarWorker = async () => {
       while (cola.length > 0) {
-        const lid = cola.shift();
+        const lid = cola.pop(); 
         const res = await this.resolver(lid);
         resultados.set(lid, res);
       }
@@ -132,8 +137,9 @@ export class LidResolver {
   precargarCache(pares) {
     for (const { lid, jid } of pares) {
       if (esLid(lid) && esJidResuelto(jid)) {
-        this.#reverseIndex.set(lid, jid);
-        this.#cache.set(lid, jid);
+        const jidLimpio = limpiarJid(jid);
+        this.#reverseIndex.set(lid, jidLimpio);
+        this.#cache.set(lid, jidLimpio);
       }
     }
   }
