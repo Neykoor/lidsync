@@ -146,7 +146,7 @@ Repositorio de pruebas:
 
 ---
 
-# 🤝 Agradecimientos
+## 🤝 Agradecimientos
 
 <p align="center">
   <a href="https://github.com/WhiskeySockets">
