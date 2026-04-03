@@ -142,7 +142,9 @@ Repositorio de pruebas:
 </p><p align="center">
   <b>Neykoor</b><br>
   https://github.com/Neykoor
-</p>---
+</p>
+
+---
 
 # 🤝 Agradecimientos
 
@@ -153,7 +155,9 @@ Repositorio de pruebas:
 </p><p align="center">
   <b>Baileys (WhiskeySockets)</b><br>
   https://github.com/WhiskeySockets
-</p>---
+</p>
+
+---
 
 # 🌸 Nota final
 
