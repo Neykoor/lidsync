@@ -51,12 +51,15 @@ Debido a la privacidad de WhatsApp:
 
 # 📦 Instalación
 
+```
 npm install lidsync
+```
 
 ---
 
 # 🚀 Uso rápido
 
+```
 import makeWASocket from "@whiskeysockets/baileys"
 import { pluginLid } from "lidsync"
 import store from "./lib/store.js"
@@ -64,6 +67,7 @@ import store from "./lib/store.js"
 const sock = pluginLid(makeWASocket({}), { store })
 
 // Usa LidSync en tu bot
+```
 
 ---
 
@@ -71,20 +75,23 @@ const sock = pluginLid(makeWASocket({}), { store })
 
 ➤ Resolver un LID
 
+```
 const jid = await sock.lid.resolve("170360431460562@lid")
 console.log(jid)
+```
 
 ---
 
 # ➤ Limpiar número (:0)
 
+```
 const jidReal = await sock.lid.resolve("170360431460562@lid")
 
 if (jidReal) {
   const clean = jidReal.split('@')[0].split(':')[0]
   console.log(`wa.me/${clean}`)
 }
-
+```
 ---
 
 # ➤ Resolución en lote
@@ -102,8 +109,10 @@ const result = await sock.lid.resolveBatch(ids, {
 
 # ➤ Estadísticas
 
+```
 const stats = sock.lid.getStats()
 console.log(stats)
+```
 
 ---
 
@@ -112,8 +121,11 @@ console.log(stats)
 Aunque es opcional, usar una base de datos mejora mucho el rendimiento:
 
 ✔ Recuperación instantánea
+
 ✔ Persistencia de datos
+
 ✔ Resoluciones en O(1)
+
 ✔ Menor uso del sistema
 
 ---
