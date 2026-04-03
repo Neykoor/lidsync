@@ -12,7 +12,7 @@
 
 ---
 
-# ✨ ¿Qué es LidSync?
+## ✨ ¿Qué es LidSync?
 
 LidSync es una librería avanzada que permite convertir identificadores privados de WhatsApp (LIDs) en identificadores reales (JIDs) usando un sistema híbrido optimizado.
 
