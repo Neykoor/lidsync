@@ -2,7 +2,12 @@
 
 <p align="center">
   <img src="https://files.catbox.moe/m28b4w.gif" width="100%" />
-</p>«🔗 LID → JID Identity Resolver for Baileys (WhatsApp Bots)»
+</p>
+
+<p align="center">
+  <b>🔗 LID → JID Identity Resolver for Baileys</b><br>
+  <sub>Optimizado para bots de WhatsApp</sub>
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.0.0-blue.svg"/>
@@ -14,52 +19,56 @@
 
 ## ✨ ¿Qué es LidSync?
 
-LidSync es una librería avanzada que permite convertir identificadores privados de WhatsApp (LIDs) en identificadores reales (JIDs) usando un sistema híbrido optimizado.
+**LidSync** es una librería avanzada que permite convertir identificadores privados de WhatsApp (**LIDs**) en identificadores reales (**JIDs**) mediante un sistema híbrido optimizado.
 
-🔍 Convierte:
-
-170360431460562@lid → 521234567890@s.whatsapp.net
-
----
-
-## ⚠️ Regla Importante: "Ice-Breaking"
-
-Debido a la privacidad de WhatsApp:
-
-«❌ No puedes resolver un número si el usuario nunca ha interactuado»
-
-# ✔ Cómo funciona:
-
-1. El usuario envía un mensaje / reacción / sticker
-2. WhatsApp comparte las claves necesarias
-3. LidSync captura y guarda la relación LID ↔ JID automáticamente
-
-# 💡 Esto significa:
-
-- No funciona en el evento de bienvenida
-- Funciona después del primer mensaje del usuario
-
----
-
-# ⚙️ Compatibilidad
-
-- 📦 Baileys: "@whiskeysockets/baileys" (v7+ recomendado)
-- 🟢 Node.js: 16 o superior
-- 💻 Compatible con Termux
-
----
-
-# 📦 Instalación
+<p align="center">
 
 ```
+170360431460562@lid → 521234567890@s.whatsapp.net
+```
+
+</p>
+
+---
+
+## ⚠️ Regla Importante — *Ice-Breaking*
+
+<p align="center">
+  ❌ <b>No puedes resolver un número si el usuario nunca ha interactuado</b>
+</p>
+
+### ✔ Cómo funciona
+
+1. El usuario envía un mensaje, reacción o sticker  
+2. WhatsApp comparte las claves necesarias  
+3. **LidSync** captura y guarda la relación **LID ↔ JID automáticamente**
+
+### 💡 Esto implica
+
+- No funciona en eventos de bienvenida  
+- Funciona después de la primera interacción del usuario  
+
+---
+
+## ⚙️ Compatibilidad
+
+- 📦 **Baileys:** `@whiskeysockets/baileys` (v7+ recomendado)  
+- 🟢 **Node.js:** 16 o superior  
+- 💻 Compatible con Termux  
+
+---
+
+## 📦 Instalación
+
+```bash
 npm install lidsync
 ```
 
 ---
 
-# 🚀 Uso rápido
+## 🚀 Uso rápido
 
-```
+```js
 import makeWASocket from "@whiskeysockets/baileys"
 import { pluginLid } from "lidsync"
 import store from "./lib/store.js"
@@ -71,20 +80,20 @@ const sock = pluginLid(makeWASocket({}), { store })
 
 ---
 
-# 🔎 Métodos disponibles
+## 🔎 Métodos disponibles
 
-➤ Resolver un LID
+### ➤ Resolver un LID
 
-```
+```js
 const jid = await sock.lid.resolve("170360431460562@lid")
 console.log(jid)
 ```
 
 ---
 
-# ➤ Limpiar número (:0)
+### ➤ Limpiar número (:0)
 
-```
+```js
 const jidReal = await sock.lid.resolve("170360431460562@lid")
 
 if (jidReal) {
@@ -92,12 +101,12 @@ if (jidReal) {
   console.log(`wa.me/${clean}`)
 }
 ```
+
 ---
 
-# ➤ Resolución en lote
+### ➤ Resolución en lote
 
-``` bash
-
+```js
 const ids = ["id1@lid", "id2@lid"]
 
 const result = await sock.lid.resolveBatch(ids, {
@@ -107,54 +116,53 @@ const result = await sock.lid.resolveBatch(ids, {
 
 ---
 
-# ➤ Estadísticas
+### ➤ Estadísticas
 
-```
+```js
 const stats = sock.lid.getStats()
 console.log(stats)
 ```
 
 ---
 
-# 💾 Uso con Store (Recomendado)
+## 💾 Uso con Store (Recomendado)
 
-Aunque es opcional, usar una base de datos mejora mucho el rendimiento:
+El uso de una base de datos mejora significativamente el rendimiento:
 
-✔ Recuperación instantánea
-
-✔ Persistencia de datos
-
-✔ Resoluciones en O(1)
-
-✔ Menor uso del sistema
+✔ Recuperación instantánea  
+✔ Persistencia de datos  
+✔ Resoluciones en O(1)  
+✔ Menor uso del sistema  
 
 ---
 
-# 🧠 Arquitectura
+## 🧠 Arquitectura
 
-Sistema de 3 niveles:
-
-1. ⚡ LRU Cache (RAM)
-2. 📂 Store Index (persistencia)
-3. 🔐 Signal Engine (Baileys)
+```
+⚡ LRU Cache (RAM)
+📂 Store Index (persistencia)
+🔐 Signal Engine (Baileys)
+```
 
 ---
 
-# 🧪 Testing
+## 🧪 Testing
 
 Repositorio de pruebas:
 
-🔗 
+🔗 https://github.com/ScriptNex/bot-test-lid
 
 ---
 
-# 👨‍💻 Creador
+## 👨‍💻 Creador
 
 <p align="center">
   <a href="https://github.com/Neykoor">
     <img src="https://github.com/Neykoor.png" width="100" style="border-radius:50%" />
   </a>
-</p><p align="center">
+</p>
+
+<p align="center">
   <b>Neykoor</b><br>
   https://github.com/Neykoor
 </p>
@@ -167,15 +175,18 @@ Repositorio de pruebas:
   <a href="https://github.com/WhiskeySockets">
     <img src="https://github.com/WhiskeySockets.png" width="100" style="border-radius:50%" />
   </a>
-</p><p align="center">
+</p>
+
+<p align="center">
   <b>Baileys (WhiskeySockets)</b><br>
   https://github.com/WhiskeySockets
 </p>
 
 ---
 
-# 🌸 Nota final
+## 🌸 Nota final
 
-LidSync está diseñado para bots avanzados que trabajan con la nueva capa de privacidad de WhatsApp.
-
-«⚡ Rápido, inteligente y listo para producción.»
+<p align="center">
+  LidSync está diseñado para bots avanzados que trabajan con la nueva capa de privacidad de WhatsApp.<br><br>
+  ⚡ <b>Rápido, inteligente y listo para producción</b>
+</p>
