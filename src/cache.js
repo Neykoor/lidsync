@@ -15,21 +15,15 @@ export class LidCache {
   }
 
   get(lid) {
-    if (!lid || typeof lid !== 'string') {
-      this.#stats.misses++;
-      return null;
-    }
+    if (!lid || typeof lid !== 'string') return null;
 
     const entry = this.#data.get(lid);
-    
     if (!entry) {
       this.#stats.misses++;
       return null;
     }
 
-    const now = Date.now();
-
-    if (now > entry.expiry) {
+    if (Date.now() > entry.expiry) {
       this.#data.delete(lid);
       this.#stats.expirations++;
       this.#stats.misses++;
@@ -44,9 +38,7 @@ export class LidCache {
   }
 
   set(lid, jid, customTtl) {
-    if (!lid || typeof lid !== 'string' || !jid || typeof jid !== 'string') {
-      return false;
-    }
+    if (!lid || typeof lid !== 'string' || !jid || typeof jid !== 'string') return false;
 
     this.#data.delete(lid);
 
@@ -65,6 +57,7 @@ export class LidCache {
   }
 
   setMany(pairs) {
+    if (!pairs || typeof pairs[Symbol.iterator] !== 'function') return 0;
     let added = 0;
     for (const [lid, jid] of pairs) {
       if (this.set(lid, jid)) added++;
@@ -77,8 +70,6 @@ export class LidCache {
   }
 
   purgeExpired(limit = null) {
-    if (limit === 0) return 0;
-    
     const now = Date.now();
     let purged = 0;
 
@@ -109,7 +100,6 @@ export class LidCache {
   }
 
   clear() {
-    this.#stopAutoPurge();
     this.#data.clear();
     Object.keys(this.#stats).forEach(k => this.#stats[k] = 0);
   }
@@ -120,13 +110,17 @@ export class LidCache {
     this.#stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
   }
 
+  get size() {
+    return this.#data.size;
+  }
+
   #startAutoPurge(intervalMs) {
     this.#stopAutoPurge();
     this.#purgeInterval = setInterval(() => {
       this.purgeExpired(100);
     }, intervalMs);
     
-    if (this.#purgeInterval.unref) {
+    if (this.#purgeInterval && this.#purgeInterval.unref) {
       this.#purgeInterval.unref();
     }
   }
@@ -136,9 +130,5 @@ export class LidCache {
       clearInterval(this.#purgeInterval);
       this.#purgeInterval = null;
     }
-  }
-
-  get size() {
-    return this.#data.size;
   }
 }
