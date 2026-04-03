@@ -3,10 +3,6 @@ import { LidCache } from "./cache.js";
 const SUFIJO_LID = "@lid";
 const SUFIJO_JID = "@s.whatsapp.net";
 
-function extraerNumero(id) {
-  return typeof id === "string" ? id.split("@")[0] : "";
-}
-
 function esLid(valor) {
   return typeof valor === "string" && valor.endsWith(SUFIJO_LID);
 }
@@ -23,7 +19,7 @@ export class LidResolver {
 
   constructor(sock, options = {}) {
     if (!sock || !sock.ev) {
-      throw new Error("Se requiere un socket válido de Baileys");
+      throw new Error("LidSync requiere un socket válido de Baileys");
     }
     this.#sock = sock;
     this.#store = options.store || null;
@@ -34,7 +30,10 @@ export class LidResolver {
   }
 
   #suscribirAEventos() {
-    const handler = (contactos) => this.#actualizarIndice(contactos);
+    const handler = (contactos) => {
+        const arrayContactos = Array.isArray(contactos) ? contactos : (contactos.contacts || []);
+        this.#actualizarIndice(arrayContactos);
+    };
     this.#sock.ev.on("contacts.upsert", handler);
     this.#sock.ev.on("contacts.update", handler);
   }
@@ -43,23 +42,13 @@ export class LidResolver {
     if (!Array.isArray(contactos)) return;
     
     for (const c of contactos) {
-      let lid = null;
-      let jid = null;
-
-      if (c.lid && c.id && esJidResuelto(c.id)) {
-        lid = c.lid;
-        jid = c.id;
-      } else if (c.id && esLid(c.id) && c.phoneNumber) {
-        lid = c.id;
-        jid = c.phoneNumber.includes('@') ? c.phoneNumber : `${c.phoneNumber}${SUFIJO_JID}`;
-      } else if (c.lid && c.phoneNumber) {
-        lid = c.lid;
-        jid = c.phoneNumber.includes('@') ? c.phoneNumber : `${c.phoneNumber}${SUFIJO_JID}`;
-      }
+      let lid = c.lid || (esLid(c.id) ? c.id : null);
+      let jid = (esJidResuelto(c.id) ? c.id : null) || (c.phoneNumber ? (c.phoneNumber.includes('@') ? c.phoneNumber : `${c.phoneNumber}${SUFIJO_JID}`) : null);
 
       if (lid && jid) {
         const lidNorm = String(lid).endsWith(SUFIJO_LID) ? String(lid) : `${lid}${SUFIJO_LID}`;
-        this.#reverseIndex.set(lidNorm, jid);
+        const jidNorm = jid.split(':')[0].split('@')[0] + SUFIJO_JID;
+        this.#reverseIndex.set(lidNorm, jidNorm);
       }
     }
   }
@@ -79,18 +68,18 @@ export class LidResolver {
     }
 
     try {
-      const repo = this.#sock.signalRepository?.lidMapping;
-      if (repo?.getPNForLID) {
-        const pn = await repo.getPNForLID(id);
+      const lidMapping = this.#sock.signalRepository?.lidMapping;
+      if (lidMapping?.getPNForLID) {
+        const pn = await lidMapping.getPNForLID(id);
         if (pn) {
-          const jidReal = pn.endsWith(SUFIJO_JID) ? pn : `${pn}${SUFIJO_JID}`;
+          const jidReal = pn.includes('@') ? pn.split(':')[0] : `${pn.split(':')[0]}${SUFIJO_JID}`;
           this.#reverseIndex.set(id, jidReal);
           this.#cache.set(id, jidReal);
           return jidReal;
         }
       }
     } catch (e) {
-      console.warn(`[whispa-lid] Error en signalRepository al resolver LID ${id}:`, e.message);
+      console.warn(`[LidSync] Error en signalRepository al resolver LID ${id}:`, e.message);
     }
 
     return null;
@@ -104,15 +93,16 @@ export class LidResolver {
 
     const ejecutarWorker = async () => {
       while (cola.length > 0) {
-        const lid = cola.shift();
+        const lid = cola.pop();
         const res = await this.resolver(lid);
         resultados.set(lid, res);
       }
     };
 
-    const workers = Array(Math.min(concurrencia, cola.length))
-      .fill(null)
-      .map(() => ejecutarWorker());
+    const workers = Array.from(
+      { length: Math.min(concurrencia, cola.length) },
+      () => ejecutarWorker()
+    );
 
     await Promise.all(workers);
     return resultados;
@@ -120,20 +110,30 @@ export class LidResolver {
 
   esResolvable(lid) {
     if (!esLid(lid)) return false;
-    return this.#reverseIndex.has(lid) || !!this.#cache.get(lid);
+    return this.#reverseIndex.has(lid) || this.#cache.get(lid) !== null;
   }
 
   sincronizarDesdeStore() {
-    if (this.#store?.contacts) {
-      this.#actualizarIndice(Object.values(this.#store.contacts));
+    if (this.#store) {
+      const contactos = this.#store.contacts || (typeof this.#store.getAllContacts === 'function' ? this.#store.getAllContacts() : null);
+      if (contactos) {
+        this.#actualizarIndice(Object.values(contactos));
+      }
     }
   }
 
+  getStats() {
+    return this.#cache.getStats();
+  }
+
   precargarCache(pares) {
-    for (const { lid, jid } of pares) {
-      if (esLid(lid) && esJidResuelto(jid)) {
-        this.#reverseIndex.set(lid, jid);
-        this.#cache.set(lid, jid);
+    if (!Array.isArray(pares)) return;
+    for (const item of pares) {
+      const { lid, jid } = item;
+      if (esLid(lid) && jid) {
+        const jidNorm = jid.includes('@') ? jid : `${jid}${SUFIJO_JID}`;
+        this.#reverseIndex.set(lid, jidNorm);
+        this.#cache.set(lid, jidNorm);
       }
     }
   }
