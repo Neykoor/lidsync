@@ -150,7 +150,7 @@ El uso de una base de datos mejora significativamente el rendimiento:
 
 Repositorio de pruebas:
 
-🔗 https://github.com/ScriptNex/bot-test-lid
+🔗 https://github.com/Neykoor/LidSync-CoreBot.git
 
 ---
 
