@@ -12,7 +12,7 @@
 
 ---
 
-✨ ¿Qué es LidSync?
+# ✨ ¿Qué es LidSync?
 
 LidSync es una librería avanzada que permite convertir identificadores privados de WhatsApp (LIDs) en identificadores reales (JIDs) usando un sistema híbrido optimizado.
 
@@ -22,26 +22,26 @@ LidSync es una librería avanzada que permite convertir identificadores privados
 
 ---
 
-⚠️ Regla Importante: "Ice-Breaking"
+# ⚠️ Regla Importante: "Ice-Breaking"
 
 Debido a la privacidad de WhatsApp:
 
 «❌ No puedes resolver un número si el usuario nunca ha interactuado»
 
-✔ Cómo funciona:
+# ✔ Cómo funciona:
 
 1. El usuario envía un mensaje / reacción / sticker
 2. WhatsApp comparte las claves necesarias
 3. LidSync captura y guarda la relación LID ↔ JID automáticamente
 
-💡 Esto significa:
+# 💡 Esto significa:
 
 - No funciona en el evento de bienvenida
 - Funciona después del primer mensaje del usuario
 
 ---
 
-⚙️ Compatibilidad
+# ⚙️ Compatibilidad
 
 - 📦 Baileys: "@whiskeysockets/baileys" (v7+ recomendado)
 - 🟢 Node.js: 16 o superior
@@ -49,13 +49,13 @@ Debido a la privacidad de WhatsApp:
 
 ---
 
-📦 Instalación
+# 📦 Instalación
 
 npm install lidsync
 
 ---
 
-🚀 Uso rápido
+# 🚀 Uso rápido
 
 import makeWASocket from "@whiskeysockets/baileys"
 import { pluginLid } from "lidsync"
@@ -67,7 +67,7 @@ const sock = pluginLid(makeWASocket({}), { store })
 
 ---
 
-🔎 Métodos disponibles
+# 🔎 Métodos disponibles
 
 ➤ Resolver un LID
 
@@ -76,7 +76,7 @@ console.log(jid)
 
 ---
 
-➤ Limpiar número (:0)
+# ➤ Limpiar número (:0)
 
 const jidReal = await sock.lid.resolve("170360431460562@lid")
 
@@ -87,7 +87,7 @@ if (jidReal) {
 
 ---
 
-➤ Resolución en lote
+# ➤ Resolución en lote
 
 const ids = ["id1@lid", "id2@lid"]
 
@@ -97,14 +97,14 @@ const result = await sock.lid.resolveBatch(ids, {
 
 ---
 
-➤ Estadísticas
+# ➤ Estadísticas
 
 const stats = sock.lid.getStats()
 console.log(stats)
 
 ---
 
-💾 Uso con Store (Recomendado)
+# 💾 Uso con Store (Recomendado)
 
 Aunque es opcional, usar una base de datos mejora mucho el rendimiento:
 
@@ -115,7 +115,7 @@ Aunque es opcional, usar una base de datos mejora mucho el rendimiento:
 
 ---
 
-🧠 Arquitectura
+# 🧠 Arquitectura
 
 Sistema de 3 niveles:
 
@@ -125,15 +125,15 @@ Sistema de 3 niveles:
 
 ---
 
-🧪 Testing
+# 🧪 Testing
 
 Repositorio de pruebas:
 
-🔗 https://github.com/ScriptNex/bot-test-lid
+🔗 
 
 ---
 
-👨‍💻 Creador
+# 👨‍💻 Creador
 
 <p align="center">
   <a href="https://github.com/Neykoor">
@@ -144,7 +144,7 @@ Repositorio de pruebas:
   https://github.com/Neykoor
 </p>---
 
-🤝 Agradecimientos
+# 🤝 Agradecimientos
 
 <p align="center">
   <a href="https://github.com/WhiskeySockets">
@@ -155,7 +155,7 @@ Repositorio de pruebas:
   https://github.com/WhiskeySockets
 </p>---
 
-🌸 Nota final
+# 🌸 Nota final
 
 LidSync está diseñado para bots avanzados que trabajan con la nueva capa de privacidad de WhatsApp.
 
