@@ -1,12 +1,18 @@
 {
-  "name": "LidSync",
+  "name": "lidsync", 
   "version": "1.0.0",
-  "description": "Resuelve LIDs de WhatsApp a JIDs @s.whatsapp.net con cache y fallback a Baileys",
+  "description": "WhatsApp LID to JID identity resolver for Baileys with LRU cache and native fallback",
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js"
   },
+  "files": [
+    "index.js",
+    "src/",
+    "examples/",
+    "README.md"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,11 +21,16 @@
     "baileys",
     "lid",
     "jid",
-    "resolver"
+    "resolver",
+    "identity",
+    "lidsync"
   ],
   "author": "Neykoor",
   "license": "MIT",
   "peerDependencies": {
-    "@whiskeysockets/baileys": "*"
+    "@whiskeysockets/baileys": ">=6.5.0"
+  },
+  "dependencies": {
+    "lru-cache": "^10.0.0"
   }
 }
