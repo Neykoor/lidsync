@@ -89,11 +89,14 @@ if (jidReal) {
 
 # ➤ Resolución en lote
 
+``` bash
+
 const ids = ["id1@lid", "id2@lid"]
 
 const result = await sock.lid.resolveBatch(ids, {
   concurrency: 5
 })
+```
 
 ---
 
