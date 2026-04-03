@@ -1,4 +1,4 @@
-🌸 LidSync
+# 🌸 LidSync
 
 <p align="center">
   <img src="https://files.catbox.moe/m28b4w.gif" width="100%" />
