@@ -8,7 +8,9 @@
   <img src="https://img.shields.io/badge/version-1.0.0-blue.svg"/>
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg"/>
   <img src="https://img.shields.io/badge/status-active-success.svg"/>
-</p>---
+</p>
+
+---
 
 ✨ ¿Qué es LidSync?
 
