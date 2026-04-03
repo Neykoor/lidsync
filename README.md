@@ -9,9 +9,7 @@
   <img src="https://img.shields.io/badge/version-1.0.0-blue.svg"/>
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg"/>
   <img src="https://img.shields.io/badge/status-active-success.svg"/>
-</p>
-
----
+</p>---
 
 ✨ ¿Qué es LidSync?
 
@@ -19,9 +17,7 @@ LidSync es una librería avanzada que permite convertir identificadores privados
 
 <p align="center">
   <code>170360431460562@lid → 521234567890@s.whatsapp.net</code>
-</p>
-
----
+</p>---
 
 ⚠️ Regla Importante — Ice-Breaking
 
@@ -167,13 +163,11 @@ LidSync incluye un Store optimizado en "examples/store.js".
 </p><p align="center">
   <b>Baileys (WhiskeySockets)</b><br>
   https://github.com/WhiskeySockets
-</p>
-
----
+</p>---
 
 🌸 Nota final
 
 <p align="center">
   LidSync está diseñado para bots avanzados que trabajan con la nueva capa de privacidad de WhatsApp.<br><br>
   ⚡ <b>Rápido, inteligente y listo para producción</b>
-</p>
+</p> 
