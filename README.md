@@ -45,13 +45,13 @@ LidSync es una librería avanzada que permite convertir identificadores privados
 ---
 
 📦 Instalación
-
+```
 npm install lidsync
-
+```
 ---
 
 🚀 Uso rápido
-
+```js
 import makeWASocket from "@whiskeysockets/baileys"
 import { pluginLid } from "lidsync"
 import storePro from "./store.js"
@@ -67,33 +67,33 @@ async function start() {
 
   // Usa LidSync en tu bot
 }
-
+```
 ---
 
 🔎 Métodos disponibles
 
 ➤ Resolver un LID
-
+```js
 const jid = await sock.lid.resolve("170360431460562@lid")
 console.log(jid)
-
+```
 ---
 
 ➤ JIDs Limpios Automáticamente ✨
 
 LidSync elimina automáticamente los sufijos como ":0" o ":1" y devuelve un JID limpio listo para usar.
-
+```js
 const jidReal = await sock.lid.resolve("170360431460562@lid")
 
 if (jidReal) {
   const numero = jidReal.split('@')[0]
   console.log(`wa.me/${numero}`)
 }
-
+```
 ---
 
 ➤ Resolución en lote
-
+```js
 const ids = ["id1@lid", "id2@lid"]
 
 const result = await sock.lid.resolveBatch(ids, {
@@ -103,14 +103,15 @@ const result = await sock.lid.resolveBatch(ids, {
 for (const [lid, jidReal] of result) {
   console.log(`${lid} ➔ ${jidReal}`)
 }
-
+```
 ---
 
 ➤ Estadísticas
 
+```js
 const stats = sock.lid.getStats()
 console.log(stats)
-
+```
 ---
 
 💾 Store Pro Incluido (Recomendado)
@@ -151,7 +152,6 @@ LidSync incluye un Store optimizado en "examples/store.js".
   <b>Neykoor</b><br>
   https://github.com/Neykoor
 </p>
-
 ---
 
 🤝 Agradecimientos
@@ -163,11 +163,12 @@ LidSync incluye un Store optimizado en "examples/store.js".
 </p><p align="center">
   <b>Baileys (WhiskeySockets)</b><br>
   https://github.com/WhiskeySockets
-</p>---
+</p>
+---
 
 🌸 Nota final
 
 <p align="center">
   LidSync está diseñado para bots avanzados que trabajan con la nueva capa de privacidad de WhatsApp.<br><br>
   ⚡ <b>Rápido, inteligente y listo para producción</b>
-</p> 
+</p>
