@@ -1,9 +1,14 @@
 import fs from 'fs/promises';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_PATH = path.join(__dirname, '..', 'data', 'store.json');
 
 export class StorePro {
   constructor(options = {}) {
-    this.path = options.path || './baileys_store.json';
+    this.path = options.path || DEFAULT_PATH;
     this.maxMessagesPerChat = options.maxMessagesPerChat || 50;
     this.saveIntervalMs = options.saveIntervalMs || 10_000;
 
@@ -14,6 +19,9 @@ export class StorePro {
     this._saveInterval = null;
     this._isSaving = false;
     
+    const dir = path.dirname(this.path);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
     this._loadSync();
     this.#bindShutdown();
   }
@@ -67,10 +75,8 @@ export class StorePro {
       for (const msg of messages) {
         const jid = msg.key.remoteJid;
         if (!jid) continue;
-        
         if (!this.messages[jid]) this.messages[jid] = [];
         this.messages[jid].push(msg);
-
         if (this.messages[jid].length > this.maxMessagesPerChat) {
           this.messages[jid].shift();
         }
@@ -91,7 +97,6 @@ export class StorePro {
       await this.destroy();
       process.exit(0);
     };
-    
     process.on('SIGINT', exitHandler);
     process.on('SIGTERM', exitHandler);
   }
@@ -99,13 +104,8 @@ export class StorePro {
   async save(force = false) {
     if (this._isSaving && !force) return;
     this._isSaving = true;
-
     try {
-      const data = JSON.stringify({
-        contacts: this.contacts,
-        chats: this.chats
-      });
-      
+      const data = JSON.stringify({ contacts: this.contacts, chats: this.chats });
       const tmpPath = `${this.path}.tmp`;
       await fs.writeFile(tmpPath, data);
       await fs.rename(tmpPath, this.path);
