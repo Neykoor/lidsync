@@ -48,9 +48,10 @@ LidSync es una librería avanzada que permite convertir identificadores privados
 
 ---
 
-📦 Instalación
+📦 Metodo de Instalación
+solo por **package.json**
 ```
-npm install lidsync
+git+https://github.com/Neykoor/LidSync.git
 ```
 ---
 
