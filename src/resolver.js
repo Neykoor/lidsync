@@ -13,7 +13,9 @@ function esJidResuelto(valor) {
 
 function limpiarJid(valor) {
   if (typeof valor !== "string") return null;
-  return `${valor.split("@")[0].split(":")[0]}${SUFIJO_JID}`;
+  const numero = valor.split("@")[0].split(":")[0];
+  if (!numero) return null;
+  return `${numero}${SUFIJO_JID}`;
 }
 
 export class LidResolver {
@@ -23,6 +25,7 @@ export class LidResolver {
   #reverseIndex = new Map();
   #handler;
   #maxIndexSize;
+  #sincronizado = false;
 
   constructor(sock, options = {}) {
     if (!sock || !sock.ev) {
@@ -72,9 +75,10 @@ export class LidResolver {
       if (lid && jid) {
         const lidNorm = String(lid).endsWith(SUFIJO_LID) ? String(lid) : `${lid}${SUFIJO_LID}`;
         this.#reverseIndex.set(lidNorm, limpiarJid(jid));
-        this.#limpiarExcesoIndice();
       }
     }
+    
+    this.#limpiarExcesoIndice();
   }
 
   async resolver(id) {
@@ -112,7 +116,13 @@ export class LidResolver {
 
   async resolverLote(lids, { concurrencia = 5 } = {}) {
     const resultados = new Map();
-    const cola = [...new Set(lids)].filter(id => esLid(id));
+    const cola = [...new Set(lids)].filter(id => {
+      if (esJidResuelto(id)) {
+        resultados.set(id, limpiarJid(id));
+        return false;
+      }
+      return esLid(id);
+    });
 
     if (cola.length === 0) return resultados;
 
@@ -134,13 +144,13 @@ export class LidResolver {
 
   esResolvable(lid) {
     if (!esLid(lid)) return false;
-    return this.#reverseIndex.has(lid);
+    return this.#reverseIndex.has(lid) || this.#cache.has(lid);
   }
 
   sincronizarDesdeStore() {
-    if (this.#store?.contacts) {
-      this.#actualizarIndice(Object.values(this.#store.contacts));
-    }
+    if (this.#sincronizado || !this.#store?.contacts) return;
+    this.#actualizarIndice(Object.values(this.#store.contacts));
+    this.#sincronizado = true;
   }
 
   precargarCache(pares) {
@@ -148,10 +158,10 @@ export class LidResolver {
       if (esLid(lid) && esJidResuelto(jid)) {
         const jidLimpio = limpiarJid(jid);
         this.#reverseIndex.set(lid, jidLimpio);
-        this.#limpiarExcesoIndice();
         this.#cache.set(lid, jidLimpio);
       }
     }
+    this.#limpiarExcesoIndice();
   }
 
   destroy() {
