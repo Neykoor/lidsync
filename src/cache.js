@@ -43,6 +43,21 @@ export class LidCache {
     return entry.jid;
   }
 
+  has(lid) {
+    if (!lid || typeof lid !== 'string') return false;
+    
+    const entry = this.#data.get(lid);
+    if (!entry) return false;
+
+    if (Date.now() > entry.expiry) {
+      this.#data.delete(lid);
+      this.#stats.expirations++;
+      return false;
+    }
+
+    return true;
+  }
+
   set(lid, jid, customTtl) {
     if (!lid || typeof lid !== 'string' || !jid || typeof jid !== 'string') {
       return false;
