@@ -78,22 +78,27 @@ export class LidCache {
     return this.#data.delete(lid);
   }
 
-  purgeExpired(limit = null) {
-    if (limit === 0) return 0;
+  purgeExpired(checkLimit = null) {
+    if (checkLimit === 0) return 0;
 
     const now = Date.now();
-    let purged = 0;
+    const toDelete = [];
+    let checked = 0;
 
     for (const [key, value] of this.#data.entries()) {
+      checked++;
       if (now > value.expiry) {
-        this.#data.delete(key);
-        purged++;
-        this.#stats.expirations++;
+        toDelete.push(key);
       }
-      if (limit !== null && purged >= limit) break;
+      if (checkLimit !== null && checked >= checkLimit) break;
     }
 
-    return purged;
+    for (const key of toDelete) {
+      this.#data.delete(key);
+      this.#stats.expirations++;
+    }
+
+    return toDelete.length;
   }
 
   getStats() {
@@ -112,7 +117,7 @@ export class LidCache {
 
   clear() {
     this.#data.clear();
-    Object.keys(this.#stats).forEach(k => this.#stats[k] = 0);
+    this.#stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
   }
 
   destroy() {
