@@ -164,6 +164,11 @@ export class LidResolver {
     this.#limpiarExcesoIndice();
   }
 
+  
+  getStats() {
+    return this.#cache.getStats();
+  }
+
   destroy() {
     if (this.#sock?.ev) {
       this.#sock.ev.off("contacts.upsert", this.#handler);
