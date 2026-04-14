@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.1.0-blue.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/Node.js-18%2B-green.svg?style=flat-square&logo=node.js"/>
-  <img src="https://img.shields.io/badge/Baileys-v7%2B-purple.svg?style=flat-square"/>
+  <img src="https://img.shields.io/badge/Baileys-%3E%3D6.7.0-purple.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/status-active-success.svg?style=flat-square"/>
 </p>
 
@@ -68,7 +68,9 @@ npm install
 import { connectToWhatsApp } from './connection.js';
 import { loadEvents } from './loader.js';
 import { pluginLid } from 'lidsync';
-import store from './lib/store.js';
+import { StorePro } from 'lidsync/examples/store.js';
+
+const store = new StorePro({ path: './data/store.json' });
 
 async function start() {
     let sock = await connectToWhatsApp();
@@ -107,7 +109,7 @@ const jid = await sock.lid.resolve('170360431460562@lid');
 
 ### `sock.lid.resolveBatch(ids, opciones?)`
 
-Resuelve múltiples LIDs con concurrencia controlada para no saturar el socket.
+Resuelve múltiples LIDs con concurrencia controlada para no saturar el socket. Los JIDs reales mezclados en el array se resuelven directamente sin consultas adicionales.
 
 ```js
 const ids = ['id1@lid', 'id2@lid', 'id3@lid'];
@@ -166,9 +168,22 @@ console.log(stats);
     hitRate: '94.98%',
     evictions: 0,
     expirations: 3,
-    memoryEstimate: '20.85 KB'
+    memoryEstimate: '~20.85 KB'
 }
 */
+```
+
+---
+
+### `sock.lid.destroy()`
+
+Limpia los listeners del socket y destruye el cache interno. Debe llamarse al reconectar el socket para evitar acumulación de handlers.
+
+```js
+// En tu lógica de reconexión:
+sock.lid.destroy();
+sock = await reconnect();
+sock = pluginLid(sock, { store });
 ```
 
 ---
@@ -177,29 +192,27 @@ console.log(stats);
 
 El store oficial de Baileys (`makeInMemoryStore`) crece indefinidamente hasta agotar la RAM. LidSync incluye un store optimizado en `examples/store.js`.
 
-```js
-import store from 'lidsync/examples/store.js';
-```
-
 **Ventajas sobre el store oficial:**
 
 | Característica | Store oficial | Store Pro |
 |---|---|---|
 | Consumo de RAM | Ilimitado | Ring buffer (50 msg/chat) |
 | Corrupción en crash | Posible | Escritura atómica `.tmp` |
-| Guardado automático | No | Cada 10s si hay cambios |
+| Guardado automático | No | Cada 10s |
 | Graceful shutdown | No | `SIGINT` / `SIGTERM` |
-| Búsqueda de contactos | O(n) | O(1) con índice |
+| Doble bind en reconexión | No protegido | Guard automático |
 
 ```js
 import { StorePro } from 'lidsync/examples/store.js';
 
 const store = new StorePro({
-    path: './data/store.json',       // Ruta del archivo (fuera de la raíz)
-    maxMessagesPerChat: 50,          // Ring buffer por chat
-    saveIntervalMs: 10_000           // Guardado cada 10 segundos
+    path: './data/store.json',    // Ruta del archivo en disco
+    maxMessagesPerChat: 50,       // Ring buffer por chat (solo en RAM)
+    saveIntervalMs: 10_000        // Guardado cada 10 segundos
 });
 ```
+
+> **Nota:** `messages` es un buffer temporal en RAM. No se persiste en disco intencionalmente para evitar sobrecarga de I/O.
 
 ---
 
@@ -218,7 +231,8 @@ pluginLid(sock, { store })
     ├── resolveBatch()
     ├── isResolvable()
     ├── preload()
-    └── getStats()
+    ├── getStats()
+    └── destroy()
 ```
 
 **Normalización automática:** todos los JIDs que salen de LidSync están limpios de sufijos de dispositivo.
@@ -232,7 +246,7 @@ pluginLid(sock, { store })
 
 ## ⚙️ Compatibilidad
 
-- **Baileys:** `@whiskeysockets/baileys` v7+ recomendado
+- **Baileys:** `@whiskeysockets/baileys` `>=6.7.0`
 - **Node.js:** 18 o superior
 - **Entornos:** Termux, Render, Pterodactyl / Pelican
 
