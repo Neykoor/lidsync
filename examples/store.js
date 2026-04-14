@@ -7,18 +7,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PATH = path.join(__dirname, '..', 'data', 'store.json');
 
 export class StorePro {
+  #bound = false;
+  #savePromise = null;
+  #exitHandler = null;
+
   constructor(options = {}) {
     this.path = options.path || DEFAULT_PATH;
     this.maxMessagesPerChat = options.maxMessagesPerChat || 50;
     this.saveIntervalMs = options.saveIntervalMs || 10_000;
 
-    this.contacts = {}; 
+    this.contacts = {};
     this.chats = {};
     this.messages = {};
 
     this._saveInterval = null;
-    this._isSaving = false;
-    
+
     const dir = path.dirname(this.path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
@@ -40,6 +43,9 @@ export class StorePro {
   }
 
   bind(ev) {
+    if (this.#bound) return;
+    this.#bound = true;
+
     ev.on('contacts.upsert', (contactos) => {
       for (const c of contactos) {
         if (c.id) this.contacts[c.id] = Object.assign(this.contacts[c.id] || {}, c);
@@ -93,26 +99,36 @@ export class StorePro {
   }
 
   #bindShutdown() {
-    const exitHandler = async () => {
+    this.#exitHandler = async () => {
       await this.destroy();
       process.exit(0);
     };
-    process.on('SIGINT', exitHandler);
-    process.on('SIGTERM', exitHandler);
+    process.on('SIGINT', this.#exitHandler);
+    process.on('SIGTERM', this.#exitHandler);
   }
 
   async save(force = false) {
-    if (this._isSaving && !force) return;
-    this._isSaving = true;
+    if (this.#savePromise) {
+      if (!force) return this.#savePromise;
+      await this.#savePromise;
+    }
+
+    const p = this.#doSave().finally(() => {
+      if (this.#savePromise === p) this.#savePromise = null;
+    });
+    
+    this.#savePromise = p;
+    return p;
+  }
+
+  async #doSave() {
     try {
       const data = JSON.stringify({ contacts: this.contacts, chats: this.chats });
       const tmpPath = `${this.path}.tmp`;
       await fs.writeFile(tmpPath, data);
       await fs.rename(tmpPath, this.path);
     } catch (error) {
-      if (force) console.error('[StorePro] Error crítico guardando estado:', error.message);
-    } finally {
-      this._isSaving = false;
+      console.error('[StorePro] Error guardando estado:', error.message);
     }
   }
 
@@ -121,12 +137,11 @@ export class StorePro {
       clearInterval(this._saveInterval);
       this._saveInterval = null;
     }
+    if (this.#exitHandler) {
+      process.off('SIGINT', this.#exitHandler);
+      process.off('SIGTERM', this.#exitHandler);
+      this.#exitHandler = null;
+    }
     await this.save(true);
   }
-
-  getAllContacts() {
-    return this.contacts;
-  }
 }
-
-export default new StorePro();
