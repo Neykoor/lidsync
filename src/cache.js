@@ -2,13 +2,15 @@ export class LidCache {
   #data = new Map();
   #maxSize;
   #ttl;
+  #purgeLimit;
   #stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
   #purgeInterval = null;
 
   constructor(options = {}) {
     this.#maxSize = Math.max(1, options.maxSize || 5000);
     this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60);
-    
+    this.#purgeLimit = options.purgeLimit || Math.max(100, Math.floor(this.#maxSize * 0.1));
+
     if (options.autoPurge !== false) {
       this.#startAutoPurge(options.purgeIntervalMs || 5 * 60 * 1000);
     }
@@ -21,15 +23,13 @@ export class LidCache {
     }
 
     const entry = this.#data.get(lid);
-    
+
     if (!entry) {
       this.#stats.misses++;
       return null;
     }
 
-    const now = Date.now();
-
-    if (now > entry.expiry) {
+    if (Date.now() > entry.expiry) {
       this.#data.delete(lid);
       this.#stats.expirations++;
       this.#stats.misses++;
@@ -38,7 +38,7 @@ export class LidCache {
 
     this.#data.delete(lid);
     this.#data.set(lid, entry);
-    
+
     this.#stats.hits++;
     return entry.jid;
   }
@@ -56,9 +56,11 @@ export class LidCache {
       this.#stats.evictions++;
     }
 
+    const finalTtl = customTtl !== undefined ? Math.max(1, customTtl) : this.#ttl;
+
     this.#data.set(lid, {
       jid,
-      expiry: Date.now() + (customTtl || this.#ttl)
+      expiry: Date.now() + finalTtl
     });
 
     return true;
@@ -78,7 +80,7 @@ export class LidCache {
 
   purgeExpired(limit = null) {
     if (limit === 0) return 0;
-    
+
     const now = Date.now();
     let purged = 0;
 
@@ -90,26 +92,25 @@ export class LidCache {
       }
       if (limit !== null && purged >= limit) break;
     }
-    
+
     return purged;
   }
 
   getStats() {
     const total = this.#stats.hits + this.#stats.misses;
-    const estBytes = this.#data.size * 150; 
-    
+    const estBytes = this.#data.size * 250;
+
     return {
       size: this.#data.size,
       maxSize: this.#maxSize,
       ttl: this.#ttl,
       ...this.#stats,
       hitRate: total > 0 ? `${((this.#stats.hits / total) * 100).toFixed(2)}%` : "0%",
-      memoryEstimate: `${(estBytes / 1024).toFixed(2)} KB`
+      memoryEstimate: `~${(estBytes / 1024).toFixed(2)} KB`
     };
   }
 
   clear() {
-    this.#stopAutoPurge();
     this.#data.clear();
     Object.keys(this.#stats).forEach(k => this.#stats[k] = 0);
   }
@@ -123,9 +124,9 @@ export class LidCache {
   #startAutoPurge(intervalMs) {
     this.#stopAutoPurge();
     this.#purgeInterval = setInterval(() => {
-      this.purgeExpired(100);
+      this.purgeExpired(this.#purgeLimit);
     }, intervalMs);
-    
+
     if (this.#purgeInterval.unref) {
       this.#purgeInterval.unref();
     }
