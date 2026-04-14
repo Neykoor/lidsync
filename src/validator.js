@@ -1,5 +1,5 @@
 const CODIGOS_VALIDOS = [
-  "521","1","7","20","27","30","31","32","33","34","36","39","40","41","43",
+  "1","7","20","27","30","31","32","33","34","36","39","40","41","43",
   "44","45","46","47","48","49","51","52","53","54","55","56","57","58","60",
   "61","62","63","64","65","66","81","82","84","86","90","91","92","93","94",
   "95","98","211","212","213","216","218","220","221","222","223","224","225",
@@ -18,7 +18,7 @@ const CODIGOS_VALIDOS = [
 ];
 
 const CODIGOS_SET = new Set(CODIGOS_VALIDOS);
-const LONGITUDES_ORDENADAS = [...new Set(CODIGOS_VALIDOS.map(c => c.length))].sort((a, b) => b - a);
+const LONGITUDES = [3, 2, 1];
 
 export function esNumeroValido(numero) {
   if (typeof numero !== "string") return false;
@@ -27,7 +27,7 @@ export function esNumeroValido(numero) {
   if (len < 8 || len > 15) return false;
   if (!/^\d+$/.test(numero)) return false;
 
-  for (const longitud of LONGITUDES_ORDENADAS) {
+  for (const longitud of LONGITUDES) {
     if (len >= longitud) {
       const prefijo = numero.slice(0, longitud);
       if (CODIGOS_SET.has(prefijo)) return true;
