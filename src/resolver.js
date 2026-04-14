@@ -3,10 +3,6 @@ import { LidCache } from "./cache.js";
 const SUFIJO_LID = "@lid";
 const SUFIJO_JID = "@s.whatsapp.net";
 
-function extraerNumero(id) {
-  return typeof id === "string" ? id.split("@")[0] : "";
-}
-
 function esLid(valor) {
   return typeof valor === "string" && valor.endsWith(SUFIJO_LID);
 }
@@ -25,6 +21,8 @@ export class LidResolver {
   #sock;
   #store;
   #reverseIndex = new Map();
+  #handler;
+  #maxIndexSize;
 
   constructor(sock, options = {}) {
     if (!sock || !sock.ev) {
@@ -33,20 +31,29 @@ export class LidResolver {
     this.#sock = sock;
     this.#store = options.store || null;
     this.#cache = new LidCache(options.cache || {});
-    
+
+    this.#maxIndexSize = Math.max(1000, options.maxIndexSize || 50000);
+    this.#handler = (contactos) => this.#actualizarIndice(contactos);
+
     this.sincronizarDesdeStore();
     this.#suscribirAEventos();
   }
 
   #suscribirAEventos() {
-    const handler = (contactos) => this.#actualizarIndice(contactos);
-    this.#sock.ev.on("contacts.upsert", handler);
-    this.#sock.ev.on("contacts.update", handler);
+    this.#sock.ev.on("contacts.upsert", this.#handler);
+    this.#sock.ev.on("contacts.update", this.#handler);
+  }
+
+  #limpiarExcesoIndice() {
+    while (this.#reverseIndex.size > this.#maxIndexSize) {
+      const oldest = this.#reverseIndex.keys().next().value;
+      this.#reverseIndex.delete(oldest);
+    }
   }
 
   #actualizarIndice(contactos) {
     if (!Array.isArray(contactos)) return;
-    
+
     for (const c of contactos) {
       let lid = null;
       let jid = null;
@@ -56,7 +63,7 @@ export class LidResolver {
         jid = c.id;
       } else if (c.id && esLid(c.id) && c.phoneNumber) {
         lid = c.id;
-        jid = c.phoneNumber; 
+        jid = c.phoneNumber;
       } else if (c.lid && c.phoneNumber) {
         lid = c.lid;
         jid = c.phoneNumber;
@@ -65,13 +72,14 @@ export class LidResolver {
       if (lid && jid) {
         const lidNorm = String(lid).endsWith(SUFIJO_LID) ? String(lid) : `${lid}${SUFIJO_LID}`;
         this.#reverseIndex.set(lidNorm, limpiarJid(jid));
+        this.#limpiarExcesoIndice();
       }
     }
   }
 
   async resolver(id) {
     if (!id || typeof id !== "string") return null;
-    if (esJidResuelto(id)) return limpiarJid(id); 
+    if (esJidResuelto(id)) return limpiarJid(id);
     if (!esLid(id)) return null;
 
     const cached = this.#cache.get(id);
@@ -90,6 +98,7 @@ export class LidResolver {
         if (pn) {
           const jidReal = limpiarJid(pn);
           this.#reverseIndex.set(id, jidReal);
+          this.#limpiarExcesoIndice();
           this.#cache.set(id, jidReal);
           return jidReal;
         }
@@ -104,12 +113,12 @@ export class LidResolver {
   async resolverLote(lids, { concurrencia = 5 } = {}) {
     const resultados = new Map();
     const cola = [...new Set(lids)].filter(id => esLid(id));
-    
+
     if (cola.length === 0) return resultados;
 
     const ejecutarWorker = async () => {
       while (cola.length > 0) {
-        const lid = cola.pop(); 
+        const lid = cola.shift();
         const res = await this.resolver(lid);
         resultados.set(lid, res);
       }
@@ -125,7 +134,7 @@ export class LidResolver {
 
   esResolvable(lid) {
     if (!esLid(lid)) return false;
-    return this.#reverseIndex.has(lid) || !!this.#cache.get(lid);
+    return this.#reverseIndex.has(lid);
   }
 
   sincronizarDesdeStore() {
@@ -139,8 +148,18 @@ export class LidResolver {
       if (esLid(lid) && esJidResuelto(jid)) {
         const jidLimpio = limpiarJid(jid);
         this.#reverseIndex.set(lid, jidLimpio);
+        this.#limpiarExcesoIndice();
         this.#cache.set(lid, jidLimpio);
       }
     }
+  }
+
+  destroy() {
+    if (this.#sock?.ev) {
+      this.#sock.ev.off("contacts.upsert", this.#handler);
+      this.#sock.ev.off("contacts.update", this.#handler);
+    }
+    this.#cache.destroy();
+    this.#reverseIndex.clear();
   }
 }
