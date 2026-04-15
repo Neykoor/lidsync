@@ -91,6 +91,9 @@ export class LidCache {
       }
       if (limit !== null && purged >= limit) break;
     }
+    if (purged > 0) {
+      console.log(`[LidSync] Librería limpiando: ${purged} entradas caducadas eliminadas.`);
+    }
     return purged;
   }
 
