@@ -2,17 +2,15 @@ export class LidCache {
   #data = new Map();
   #maxSize;
   #ttl;
-  #purgeLimit;
   #stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
   #purgeInterval = null;
 
   constructor(options = {}) {
-    this.#maxSize = Math.max(1, options.maxSize || 10000);
+    this.#maxSize = Math.max(1, options.maxSize || 5000);
     this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60 * 24);
-    this.#purgeLimit = options.purgeLimit || Math.max(100, Math.floor(this.#maxSize * 0.1));
-
+    
     if (options.autoPurge !== false) {
-      this.#startAutoPurge(options.purgeIntervalMs || 10 * 60 * 1000);
+      this.#startAutoPurge(options.purgeIntervalMs || 5 * 60 * 1000);
     }
   }
 
@@ -23,13 +21,15 @@ export class LidCache {
     }
 
     const entry = this.#data.get(lid);
-
+    
     if (!entry) {
       this.#stats.misses++;
       return null;
     }
 
-    if (Date.now() > entry.expiry) {
+    const now = Date.now();
+
+    if (now > entry.expiry) {
       this.#data.delete(lid);
       this.#stats.expirations++;
       this.#stats.misses++;
@@ -38,23 +38,20 @@ export class LidCache {
 
     this.#data.delete(lid);
     this.#data.set(lid, entry);
-
+    
     this.#stats.hits++;
     return entry.jid;
   }
 
   has(lid) {
     if (!lid || typeof lid !== 'string') return false;
-    
     const entry = this.#data.get(lid);
     if (!entry) return false;
-
     if (Date.now() > entry.expiry) {
       this.#data.delete(lid);
       this.#stats.expirations++;
       return false;
     }
-
     return true;
   }
 
@@ -63,13 +60,13 @@ export class LidCache {
       return false;
     }
 
-    if (this.#data.size >= this.#maxSize && !this.#data.has(lid)) {
+    this.#data.delete(lid);
+
+    if (this.#data.size >= this.#maxSize) {
       const oldest = this.#data.keys().next().value;
       this.#data.delete(oldest);
       this.#stats.evictions++;
     }
-
-    this.#data.delete(lid);
 
     const finalTtl = customTtl !== undefined ? Math.max(1, customTtl) : this.#ttl;
 
@@ -94,46 +91,37 @@ export class LidCache {
     return this.#data.delete(lid);
   }
 
-  purgeExpired(checkLimit = null) {
-    if (checkLimit === 0) return 0;
-
+  purgeExpired(limit = null) {
+    if (limit === 0) return 0;
     const now = Date.now();
-    const toDelete = [];
-    let checked = 0;
-
+    let purged = 0;
     for (const [key, value] of this.#data.entries()) {
-      checked++;
       if (now > value.expiry) {
-        toDelete.push(key);
+        this.#data.delete(key);
+        purged++;
+        this.#stats.expirations++;
       }
-      if (checkLimit !== null && checked >= checkLimit) break;
+      if (limit !== null && purged >= limit) break;
     }
-
-    for (const key of toDelete) {
-      this.#data.delete(key);
-      this.#stats.expirations++;
-    }
-
-    return toDelete.length;
+    return purged;
   }
 
   getStats() {
     const total = this.#stats.hits + this.#stats.misses;
-    const estBytes = this.#data.size * 200;
-
+    const estBytes = this.#data.size * 150; 
     return {
       size: this.#data.size,
       maxSize: this.#maxSize,
       ttl: this.#ttl,
       ...this.#stats,
       hitRate: total > 0 ? `${((this.#stats.hits / total) * 100).toFixed(2)}%` : "0%",
-      memoryEstimate: `~${(estBytes / 1024).toFixed(2)} KB`
+      memoryEstimate: `${(estBytes / 1024).toFixed(2)} KB`
     };
   }
 
   clear() {
     this.#data.clear();
-    this.#stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
+    Object.keys(this.#stats).forEach(k => this.#stats[k] = 0);
   }
 
   destroy() {
@@ -145,12 +133,9 @@ export class LidCache {
   #startAutoPurge(intervalMs) {
     this.#stopAutoPurge();
     this.#purgeInterval = setInterval(() => {
-      this.purgeExpired(this.#purgeLimit);
+      this.purgeExpired(100);
     }, intervalMs);
-
-    if (this.#purgeInterval.unref) {
-      this.#purgeInterval.unref();
-    }
+    if (this.#purgeInterval.unref) this.#purgeInterval.unref();
   }
 
   #stopAutoPurge() {
