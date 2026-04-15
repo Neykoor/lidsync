@@ -13,8 +13,8 @@ function esJidResuelto(valor) {
 
 function limpiarJid(valor) {
   if (typeof valor !== "string") return null;
-  const numero = valor.split("@")[0].split(":")[0];
-  if (!numero) return null;
+  const numero = valor.split("@")[0].split(":")[0].replace(/\D/g, "");
+  if (!numero || numero.length < 5) return null;
   return `${numero}${SUFIJO_JID}`;
 }
 
@@ -74,16 +74,16 @@ export class LidResolver {
 
       if (lid && jid) {
         const lidNorm = String(lid).endsWith(SUFIJO_LID) ? String(lid) : `${lid}${SUFIJO_LID}`;
-        this.#reverseIndex.set(lidNorm, limpiarJid(jid));
+        const jidLimpio = limpiarJid(jid) || (jid.split("@")[0] + SUFIJO_JID);
+        this.#reverseIndex.set(lidNorm, jidLimpio);
       }
     }
-    
     this.#limpiarExcesoIndice();
   }
 
   async resolver(id) {
     if (!id || typeof id !== "string") return null;
-    if (esJidResuelto(id)) return limpiarJid(id);
+    if (esJidResuelto(id)) return limpiarJid(id) || id;
     if (!esLid(id)) return null;
 
     const cached = this.#cache.get(id);
@@ -100,7 +100,7 @@ export class LidResolver {
       if (repo?.getPNForLID) {
         const pn = await repo.getPNForLID(id);
         if (pn) {
-          const jidReal = limpiarJid(pn);
+          const jidReal = limpiarJid(pn) || (pn.split("@")[0] + SUFIJO_JID);
           this.#reverseIndex.set(id, jidReal);
           this.#limpiarExcesoIndice();
           this.#cache.set(id, jidReal);
@@ -118,7 +118,7 @@ export class LidResolver {
     const resultados = new Map();
     const cola = [...new Set(lids)].filter(id => {
       if (esJidResuelto(id)) {
-        resultados.set(id, limpiarJid(id));
+        resultados.set(id, limpiarJid(id) || id);
         return false;
       }
       return esLid(id);
@@ -155,8 +155,8 @@ export class LidResolver {
 
   precargarCache(pares) {
     for (const { lid, jid } of pares) {
-      if (esLid(lid) && esJidResuelto(jid)) {
-        const jidLimpio = limpiarJid(jid);
+      if (esLid(lid) && (esJidResuelto(jid) || typeof jid === "string")) {
+        const jidLimpio = limpiarJid(jid) || (jid.split("@")[0] + SUFIJO_JID);
         this.#reverseIndex.set(lid, jidLimpio);
         this.#cache.set(lid, jidLimpio);
       }
@@ -164,7 +164,6 @@ export class LidResolver {
     this.#limpiarExcesoIndice();
   }
 
-  
   getStats() {
     return this.#cache.getStats();
   }
