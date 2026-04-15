@@ -7,12 +7,12 @@ export class LidCache {
   #purgeInterval = null;
 
   constructor(options = {}) {
-    this.#maxSize = Math.max(1, options.maxSize || 5000);
-    this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60);
+    this.#maxSize = Math.max(1, options.maxSize || 10000);
+    this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60 * 24);
     this.#purgeLimit = options.purgeLimit || Math.max(100, Math.floor(this.#maxSize * 0.1));
 
     if (options.autoPurge !== false) {
-      this.#startAutoPurge(options.purgeIntervalMs || 5 * 60 * 1000);
+      this.#startAutoPurge(options.purgeIntervalMs || 10 * 60 * 1000);
     }
   }
 
@@ -63,13 +63,13 @@ export class LidCache {
       return false;
     }
 
-    this.#data.delete(lid);
-
-    if (this.#data.size >= this.#maxSize) {
+    if (this.#data.size >= this.#maxSize && !this.#data.has(lid)) {
       const oldest = this.#data.keys().next().value;
       this.#data.delete(oldest);
       this.#stats.evictions++;
     }
+
+    this.#data.delete(lid);
 
     const finalTtl = customTtl !== undefined ? Math.max(1, customTtl) : this.#ttl;
 
@@ -83,7 +83,8 @@ export class LidCache {
 
   setMany(pairs) {
     let added = 0;
-    for (const [lid, jid] of pairs) {
+    const entries = Array.isArray(pairs) ? pairs : Object.entries(pairs);
+    for (const [lid, jid] of entries) {
       if (this.set(lid, jid)) added++;
     }
     return added;
@@ -118,7 +119,7 @@ export class LidCache {
 
   getStats() {
     const total = this.#stats.hits + this.#stats.misses;
-    const estBytes = this.#data.size * 250;
+    const estBytes = this.#data.size * 200;
 
     return {
       size: this.#data.size,
