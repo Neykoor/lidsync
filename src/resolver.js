@@ -19,24 +19,14 @@ function limpiarJid(valor) {
 }
 
 export class LidResolver {
-  #cache;
-  #sock;
-  #store;
-  #reverseIndex = new Map();
-  #handler;
-  #maxIndexSize;
-  #sincronizado = false;
+  #cache; #sock; #store; #reverseIndex = new Map(); #handler; #maxIndexSize; #sincronizado = false;
 
   constructor(sock, options = {}) {
-    if (!sock || !sock.ev) {
-      throw new Error("Se requiere un socket válido de Baileys");
-    }
     this.#sock = sock;
     this.#store = options.store || null;
     this.#cache = new LidCache(options.cache || {});
     this.#maxIndexSize = Math.max(1000, options.maxIndexSize || 50000);
     this.#handler = (contactos) => this.#actualizarIndice(contactos);
-
     this.sincronizarDesdeStore();
     this.#suscribirAEventos();
   }
@@ -58,28 +48,20 @@ export class LidResolver {
     });
   }
 
-  #limpiarExcesoIndice() {
-    if (this.#reverseIndex.size > this.#maxIndexSize) {
-      const keysToDelete = Array.from(this.#reverseIndex.keys()).slice(0, 100);
-      for (const key of keysToDelete) this.#reverseIndex.delete(key);
-    }
-  }
-
   #actualizarIndice(contactos) {
     if (!Array.isArray(contactos)) return;
-
     for (const c of contactos) {
       let lid = c.lid || (esLid(c.id) ? c.id : null);
       let jid = c.phoneNumber || (esJidResuelto(c.id) ? c.id : null);
-
       if (lid && jid) {
         const lidNorm = lid.endsWith(SUFIJO_LID) ? lid : `${lid}${SUFIJO_LID}`;
-        const jidLimpio = limpiarJid(jid) || (jid.split("@")[0] + SUFIJO_JID);
-        this.#reverseIndex.set(lidNorm, jidLimpio);
-        this.#cache.set(lidNorm, jidLimpio);
+        const jidLimpio = limpiarJid(jid);
+        if (jidLimpio) {
+          this.#reverseIndex.set(lidNorm, jidLimpio);
+          this.#cache.set(lidNorm, jidLimpio);
+        }
       }
     }
-    this.#limpiarExcesoIndice();
   }
 
   async resolver(id) {
@@ -101,48 +83,16 @@ export class LidResolver {
       if (repo?.getPNForLID) {
         const pn = await repo.getPNForLID(id);
         if (pn) {
-          const jidReal = limpiarJid(pn) || (pn.split("@")[0] + SUFIJO_JID);
-          this.#reverseIndex.set(id, jidReal);
-          this.#cache.set(id, jidReal);
-          return jidReal;
+          const jidReal = limpiarJid(pn);
+          if (jidReal) {
+            this.#reverseIndex.set(id, jidReal);
+            this.#cache.set(id, jidReal);
+            return jidReal;
+          }
         }
       }
     } catch (e) {}
-
     return null;
-  }
-
-  async resolverLote(lids, { concurrencia = 5 } = {}) {
-    const resultados = new Map();
-    const cola = [...new Set(lids)].filter(id => {
-      if (esJidResuelto(id)) {
-        resultados.set(id, limpiarJid(id) || id);
-        return false;
-      }
-      return esLid(id);
-    });
-
-    if (cola.length === 0) return resultados;
-
-    const ejecutarWorker = async () => {
-      while (cola.length > 0) {
-        const lid = cola.shift();
-        const res = await this.resolver(lid);
-        resultados.set(lid, res);
-      }
-    };
-
-    const workers = Array(Math.min(concurrencia, cola.length))
-      .fill(null)
-      .map(() => ejecutarWorker());
-
-    await Promise.all(workers);
-    return resultados;
-  }
-
-  esResolvable(lid) {
-    if (!esLid(lid)) return false;
-    return this.#reverseIndex.has(lid) || this.#cache.has(lid);
   }
 
   sincronizarDesdeStore() {
@@ -151,22 +101,6 @@ export class LidResolver {
     this.#sincronizado = true;
   }
 
-  precargarCache(pares) {
-    for (const { lid, jid } of pares) {
-      if (esLid(lid) && (esJidResuelto(jid) || typeof jid === "string")) {
-        const jidLimpio = limpiarJid(jid) || (jid.split("@")[0] + SUFIJO_JID);
-        this.#reverseIndex.set(lid, jidLimpio);
-        this.#cache.set(lid, jidLimpio);
-      }
-    }
-  }
-
-  destroy() {
-    if (this.#sock?.ev) {
-      this.#sock.ev.off("contacts.upsert", this.#handler);
-      this.#sock.ev.on("contacts.update", this.#handler);
-    }
-    this.#cache.destroy();
-    this.#reverseIndex.clear();
-  }
+  esResolvable(lid) { return esLid(lid) && (this.#reverseIndex.has(lid) || this.#cache.has(lid)); }
+  destroy() { this.#cache.destroy(); this.#reverseIndex.clear(); }
 }
