@@ -10,7 +10,7 @@ export class LidCache {
     this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60 * 24);
     
     if (options.autoPurge !== false) {
-      this.#startAutoPurge(options.purgeIntervalMs || 10 * 60 * 1000);
+      this.#startAutoPurge(options.purgeIntervalMs || 15 * 60 * 1000);
     }
   }
 
@@ -34,8 +34,7 @@ export class LidCache {
       return null;
     }
 
-    entry.expiry = Math.max(entry.expiry, now + (this.#ttl * 0.3));
-
+    entry.expiry = Math.max(entry.expiry, now + (this.#ttl * 0.2));
     this.#data.delete(lid);
     this.#data.set(lid, entry);
     
@@ -44,12 +43,9 @@ export class LidCache {
   }
 
   set(lid, jid, customTtl) {
-    if (!lid || typeof lid !== 'string' || !jid || typeof jid !== 'string') {
-      return false;
-    }
+    if (!lid || typeof lid !== 'string' || !jid || typeof jid !== 'string') return false;
 
     this.#data.delete(lid);
-
     if (this.#data.size >= this.#maxSize) {
       const oldestKey = this.#data.keys().next().value;
       this.#data.delete(oldestKey);
@@ -60,7 +56,6 @@ export class LidCache {
       jid,
       expiry: Date.now() + (customTtl || this.#ttl)
     });
-
     return true;
   }
 
@@ -74,14 +69,20 @@ export class LidCache {
     return added;
   }
 
-  delete(lid) {
-    return this.#data.delete(lid);
+  getStats() {
+    const total = this.#stats.hits + this.#stats.misses;
+    return {
+      size: this.#data.size,
+      maxSize: this.#maxSize,
+      ...this.#stats,
+      hitRate: total > 0 ? `${((this.#stats.hits / total) * 100).toFixed(2)}%` : "0%",
+      memoryEstimate: `${((this.#data.size * 250) / 1024).toFixed(2)} KB`
+    };
   }
 
-  purgeExpired(limit = 150) {
+  purgeExpired(limit = 100) {
     const now = Date.now();
     let purged = 0;
-
     for (const [key, value] of this.#data.entries()) {
       if (now > value.expiry) {
         this.#data.delete(key);
@@ -93,42 +94,14 @@ export class LidCache {
     return purged;
   }
 
-  getStats() {
-    const total = this.#stats.hits + this.#stats.misses;
-    const estBytes = this.#data.size * 250; 
-    
-    return {
-      size: this.#data.size,
-      maxSize: this.#maxSize,
-      ttl: this.#ttl,
-      ...this.#stats,
-      hitRate: total > 0 ? `${((this.#stats.hits / total) * 100).toFixed(2)}%` : "0%",
-      memoryEstimate: `${(estBytes / 1024).toFixed(2)} KB`
-    };
-  }
-
-  clear() {
-    this.#data.clear();
-    this.#stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
-  }
-
-  destroy() {
-    this.#stopAutoPurge();
-    this.#data.clear();
-    this.#stats = { hits: 0, misses: 0, evictions: 0, expirations: 0 };
-  }
-
   #startAutoPurge(intervalMs) {
     this.#stopAutoPurge();
     this.#purgeInterval = setInterval(() => {
-      if (this.#data.size > (this.#maxSize * 0.7)) {
-        this.purgeExpired(200);
+      if (this.#data.size > (this.#maxSize * 0.85)) {
+        this.purgeExpired(100);
       }
     }, intervalMs);
-    
-    if (this.#purgeInterval.unref) {
-      this.#purgeInterval.unref();
-    }
+    if (this.#purgeInterval.unref) this.#purgeInterval.unref();
   }
 
   #stopAutoPurge() {
@@ -138,7 +111,8 @@ export class LidCache {
     }
   }
 
-  get size() {
-    return this.#data.size;
-  }
+  delete(lid) { return this.#data.delete(lid); }
+  clear() { this.#data.clear(); }
+  destroy() { this.#stopAutoPurge(); this.#data.clear(); }
+  get size() { return this.#data.size; }
 }
