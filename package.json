@@ -17,7 +17,7 @@
     "jid",
     "resolver"
   ],
-  "author": "ScriptNex",
+  "author": "Neykoor",
   "license": "MIT",
   "peerDependencies": {
     "@whiskeysockets/baileys": "*"
