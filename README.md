@@ -6,16 +6,26 @@
 
 <p align="center">
   <b>LID → JID Identity Resolver para bots de WhatsApp con Baileys</b><br>
-  <sub>Cache LRU · Store integrado · Normalización automática de JIDs</sub>
+  <sub>Cache LRU · Store Inteligente · Auto-Aprendizaje · Normalización automática de JIDs</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue.svg?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-5.0.0-blue.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/Node.js-18%2B-green.svg?style=flat-square&logo=node.js"/>
   <img src="https://img.shields.io/badge/Baileys-%3E%3D6.7.0-purple.svg?style=flat-square"/>
-  <img src="https://img.shields.io/badge/status-active-success.svg?style=flat-square"/>
+  <img src="https://img.shields.io/badge/status-stable-success.svg?style=flat-square"/>
 </p>
+
+---
+
+> ## 🎉 ¡Bienvenidos a LidSync v5 "Gentle"!
+>
+> Esta versión marca un salto significativo en estabilidad y persistencia. La v5 fue diseñada para ser **infalible pero ligera**: los usuarios ya no se "olvidan" tras un reinicio gracias al auto-aprendizaje pasivo y la persistencia de 24 horas.
+>
+> **¿Vienes de la v4?** Todo el API que conoces sigue funcionando igual. Solo necesitas actualizar la dependencia y, opcionalmente, adoptar los nuevos métodos.
+>
+> 🔭 **¿Qué sigue?** La **v6** está en desarrollo y llegará el próximo mes con aún más mejoras. ¡Mantente pendiente!
 
 ---
 
@@ -27,25 +37,46 @@ WhatsApp introdujo los **LIDs** (`170360431460562@lid`) como identificadores de 
 170360431460562@lid  →  521234567890@s.whatsapp.net
 ```
 
-**Jerarquía de resolución:**
+---
 
-| Nivel | Fuente | Velocidad |
+## 🆕 ¿Qué hay de nuevo en la v5?
+
+| Característica | v4 | v5 "Gentle" |
 |---|---|---|
-| 1 | Cache LRU en RAM | O(1) instantáneo |
-| 2 | Índice invertido (Store) | O(1) en memoria |
-| 3 | Signal Repository de Baileys | Asíncrono (criptográfico) |
+| Persistencia de identidades | TTL 1h | **Persistencia 24h con refresco automático** |
+| Aprendizaje de JIDs | Solo en eventos principales | **Pasivo: mensajes, stickers, reacciones** |
+| Logs de mantenimiento | Sin avisos | **Mensajes en consola al limpiar memoria** |
+| Validación del Store | Sin protección | **Protección contra `store.json` corrupto** |
+
+- **Detección Pasiva:** Captura mapeos desde cualquier evento (Mensajes, Stickers, Reacciones).
+- **Persistencia de 24h:** El cache mantiene identidades por un día completo, refrescándose automáticamente con cada interacción.
+- **Logs de Mantenimiento:** Avisos en consola cuando la librería realiza limpieza de memoria.
+- **Validación de Store:** Protección contra archivos `store.json` corruptos o incompletos sin detener el bot.
 
 ---
 
-## ⚠️ Limitación importante
+## 🧠 Jerarquía de Resolución
+
+LidSync utiliza una estrategia de tres capas para garantizar que el Owner y los usuarios siempre sean reconocidos:
+
+| Nivel | Fuente | Lógica |
+|---|---|---|
+| **1** | **Cache Dinámico** | Persistencia de 24h con refresco automático (LRU). |
+| **2** | **Auto-Aprendizaje** | Captura JIDs reales desde metadatos de mensajes entrantes. |
+| **3** | **Store & Signal** | Fallback a la base de datos local y al repositorio de Baileys. |
+
+---
+
+## ⚠️ El problema de los LIDs opacos
 
 > **Un LID solo puede resolverse si el usuario ya interactuó con el bot o está en la agenda del número vinculado.**
 
-Esto es una restricción de WhatsApp, no de LidSync. Cuando un usuario envía un mensaje, Baileys captura automáticamente el mapeo LID ↔ JID y LidSync lo indexa. Sin esa interacción previa, el LID es opaco por diseño.
+Esto es una restricción de WhatsApp, no de LidSync. La v5 soluciona esto detectando automáticamente el JID real cuando el usuario envía:
 
-**Consecuencia práctica:**
 - ❌ Eventos de bienvenida con LID puro → no resoluble hasta primera interacción
-- ✅ Mensajes, reacciones, stickers → LidSync captura y resuelve automáticamente
+- ✅ Un mensaje de texto
+- ✅ Un Sticker o Audio
+- ✅ Una Reacción (Emoji)
 
 ---
 
@@ -88,13 +119,38 @@ async function start() {
 start();
 ```
 
+### Integración con Auto-Aprendizaje (v5)
+
+```js
+import { pluginLid } from 'lidsync';
+import { StorePro } from './database/store.js';
+
+const store = new StorePro({ path: './database/store.json' });
+
+async function start() {
+    let sock = await connectToWhatsApp();
+    
+    // Inyectar LidSync v5
+    sock = pluginLid(sock, { store });
+
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        const m = messages[0];
+        const sender = m.key.participant || m.key.remoteJid;
+        
+        // Resolución transparente — v5 aprende automáticamente de este evento
+        const realJid = await sock.lid.resolve(sender);
+        console.log(`Mensaje de: ${realJid}`);
+    });
+}
+```
+
 ---
 
 ## 🔎 API
 
 ### `sock.lid.resolve(id)`
 
-Resuelve un LID a su JID real. Si el input ya es un JID (`@s.whatsapp.net`), lo devuelve directamente sin consultas.
+Resuelve un LID a su JID real. Si el input ya es un JID (`@s.whatsapp.net`), lo devuelve directamente. En v5, también normaliza sufijos de dispositivo (`:1`, `:2`).
 
 ```js
 const jid = await sock.lid.resolve('170360431460562@lid');
@@ -153,22 +209,16 @@ sock.lid.preload([
 
 ### `sock.lid.getStats()`
 
-Devuelve estadísticas del cache LRU.
+Devuelve estadísticas del cache LRU. En v5 incluye estimación de memoria mejorada.
 
 ```js
 const stats = sock.lid.getStats();
 console.log(stats);
 /*
 {
-    size: 142,
-    maxSize: 5000,
-    ttl: 3600000,
-    hits: 891,
-    misses: 47,
-    hitRate: '94.98%',
-    evictions: 0,
-    expirations: 3,
-    memoryEstimate: '~20.85 KB'
+    "size": 1250,
+    "hitRate": "98.5%",
+    "memoryEstimate": "310.20 KB"
 }
 */
 ```
@@ -177,7 +227,7 @@ console.log(stats);
 
 ### `sock.lid.destroy()`
 
-Limpia los listeners del socket y destruye el cache interno. Debe llamarse al reconectar el socket para evitar acumulación de handlers.
+Limpia los listeners del socket y destruye el cache interno. **Úsalo siempre antes de una reconexión.**
 
 ```js
 // En tu lógica de reconexión:
@@ -188,9 +238,22 @@ sock = pluginLid(sock, { store });
 
 ---
 
+## 📊 Monitoreo y Limpieza (v5)
+
+LidSync v5 gestiona la memoria de forma inteligente. Verás estos mensajes en consola cuando el sistema realice mantenimiento preventivo:
+
+```
+[LidSync] Librería limpiando: X entradas caducadas eliminadas.
+[LidSync] Librería limpiando: Índice saturado, se liberaron X espacios.
+```
+
+Esto ocurre automáticamente cuando el cache supera el **85% de su capacidad**, asegurando que el bot nunca consuma RAM en exceso.
+
+---
+
 ## 💾 Store Pro (incluido)
 
-El store oficial de Baileys (`makeInMemoryStore`) crece indefinidamente hasta agotar la RAM. LidSync incluye un store optimizado en `examples/store.js`.
+El store oficial de Baileys (`makeInMemoryStore`) crece indefinidamente hasta agotar la RAM. LidSync incluye un store optimizado con escrituras atómicas y validación de integridad en v5.
 
 **Ventajas sobre el store oficial:**
 
@@ -201,14 +264,15 @@ El store oficial de Baileys (`makeInMemoryStore`) crece indefinidamente hasta ag
 | Guardado automático | No | Cada 10s |
 | Graceful shutdown | No | `SIGINT` / `SIGTERM` |
 | Doble bind en reconexión | No protegido | Guard automático |
+| Validación de integridad | No | **Sí (v5)** |
 
 ```js
 import { StorePro } from 'lidsync/examples/store.js';
 
 const store = new StorePro({
-    path: './data/store.json',    // Ruta del archivo en disco
-    maxMessagesPerChat: 50,       // Ring buffer por chat (solo en RAM)
-    saveIntervalMs: 10_000        // Guardado cada 10 segundos
+    path: './database/store.json',
+    saveIntervalMs: 20000,     // Optimizado para Termux (v5)
+    maxGroupsInCache: 1000
 });
 ```
 
@@ -222,8 +286,9 @@ const store = new StorePro({
 pluginLid(sock, { store })
 │
 ├── LidResolver
-│   ├── LidCache (LRU, TTL 1h, máx 5000 entradas)
+│   ├── LidCache (LRU, TTL 24h, máx 5000 entradas)   ← v5: era 1h
 │   ├── #reverseIndex (Map<LID, JID> — índice O(1))
+│   ├── AutoLearn (mensajes, stickers, reacciones)    ← nuevo en v5
 │   └── sock.signalRepository (Baileys interno)
 │
 └── sock.lid
