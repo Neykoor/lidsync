@@ -45,6 +45,18 @@ export class LidResolver {
   #suscribirAEventos() {
     this.#sock.ev.on("contacts.upsert", this.#handler);
     this.#sock.ev.on("contacts.update", this.#handler);
+    
+    this.#sock.ev.on("messages.upsert", ({ messages }) => {
+      for (const m of messages) {
+        const id = m.key.participant || m.key.remoteJid;
+        if (id && esLid(id)) {
+          const pn = m.key.participant?.split(':')[0] || m.key.remoteJid?.split(':')[0];
+          if (pn && !pn.endsWith(SUFIJO_LID)) {
+            this.#actualizarIndice([{ lid: id, phoneNumber: pn }]);
+          }
+        }
+      }
+    });
   }
 
   #limpiarExcesoIndice() {
@@ -58,24 +70,14 @@ export class LidResolver {
     if (!Array.isArray(contactos)) return;
 
     for (const c of contactos) {
-      let lid = null;
-      let jid = null;
-
-      if (c.lid && c.id && esJidResuelto(c.id)) {
-        lid = c.lid;
-        jid = c.id;
-      } else if (c.id && esLid(c.id) && c.phoneNumber) {
-        lid = c.id;
-        jid = c.phoneNumber;
-      } else if (c.lid && c.phoneNumber) {
-        lid = c.lid;
-        jid = c.phoneNumber;
-      }
+      let lid = c.lid || (esLid(c.id) ? c.id : null);
+      let jid = c.phoneNumber || (esJidResuelto(c.id) ? c.id : null);
 
       if (lid && jid) {
-        const lidNorm = String(lid).endsWith(SUFIJO_LID) ? String(lid) : `${lid}${SUFIJO_LID}`;
+        const lidNorm = lid.endsWith(SUFIJO_LID) ? lid : `${lid}${SUFIJO_LID}`;
         const jidLimpio = limpiarJid(jid) || (jid.split("@")[0] + SUFIJO_JID);
         this.#reverseIndex.set(lidNorm, jidLimpio);
+        this.#cache.set(lidNorm, jidLimpio);
       }
     }
     this.#limpiarExcesoIndice();
@@ -107,9 +109,7 @@ export class LidResolver {
           return jidReal;
         }
       }
-    } catch (e) {
-      console.warn(`[LidSync] Error en signalRepository al resolver LID ${id}:`, e.message);
-    }
+    } catch (e) {}
 
     return null;
   }
