@@ -6,11 +6,11 @@ export class LidCache {
   #purgeInterval = null;
 
   constructor(options = {}) {
-    this.#maxSize = Math.max(1, options.maxSize || 5000);
-    this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60);
+    this.#maxSize = Math.max(1, options.maxSize || 7500);
+    this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60 * 24);
     
     if (options.autoPurge !== false) {
-      this.#startAutoPurge(options.purgeIntervalMs || 5 * 60 * 1000);
+      this.#startAutoPurge(options.purgeIntervalMs || 10 * 60 * 1000);
     }
   }
 
@@ -36,6 +36,8 @@ export class LidCache {
       return null;
     }
 
+    entry.expiry = Math.max(entry.expiry, now + (this.#ttl * 0.3));
+
     this.#data.delete(lid);
     this.#data.set(lid, entry);
     
@@ -51,8 +53,8 @@ export class LidCache {
     this.#data.delete(lid);
 
     if (this.#data.size >= this.#maxSize) {
-      const oldest = this.#data.keys().next().value;
-      this.#data.delete(oldest);
+      const oldestKey = this.#data.keys().next().value;
+      this.#data.delete(oldestKey);
       this.#stats.evictions++;
     }
 
@@ -66,7 +68,8 @@ export class LidCache {
 
   setMany(pairs) {
     let added = 0;
-    for (const [lid, jid] of pairs) {
+    const entries = Array.isArray(pairs) ? pairs : Object.entries(pairs);
+    for (const [lid, jid] of entries) {
       if (this.set(lid, jid)) added++;
     }
     return added;
@@ -96,7 +99,7 @@ export class LidCache {
 
   getStats() {
     const total = this.#stats.hits + this.#stats.misses;
-    const estBytes = this.#data.size * 150; 
+    const estBytes = this.#data.size * 180; 
     
     return {
       size: this.#data.size,
@@ -109,7 +112,6 @@ export class LidCache {
   }
 
   clear() {
-    this.#stopAutoPurge();
     this.#data.clear();
     Object.keys(this.#stats).forEach(k => this.#stats[k] = 0);
   }
@@ -123,7 +125,9 @@ export class LidCache {
   #startAutoPurge(intervalMs) {
     this.#stopAutoPurge();
     this.#purgeInterval = setInterval(() => {
-      this.purgeExpired(100);
+      if (this.#data.size > (this.#maxSize * 0.8)) {
+        this.purgeExpired(150);
+      }
     }, intervalMs);
     
     if (this.#purgeInterval.unref) {
