@@ -48,6 +48,17 @@ export class LidResolver {
     });
   }
 
+  #limpiarExcesoIndice() {
+    if (this.#reverseIndex.size > this.#maxIndexSize) {
+      const cantidadABorrar = 100;
+      const keysToDelete = Array.from(this.#reverseIndex.keys()).slice(0, cantidadABorrar);
+      for (const key of keysToDelete) {
+        this.#reverseIndex.delete(key);
+      }
+      console.log(`[LidSync] Librería limpiando: Índice saturado, se liberaron ${cantidadABorrar} espacios.`);
+    }
+  }
+
   #actualizarIndice(contactos) {
     if (!Array.isArray(contactos)) return;
     for (const c of contactos) {
@@ -62,6 +73,7 @@ export class LidResolver {
         }
       }
     }
+    this.#limpiarExcesoIndice();
   }
 
   async resolver(id) {
@@ -96,9 +108,22 @@ export class LidResolver {
   }
 
   sincronizarDesdeStore() {
-    if (this.#sincronizado || !this.#store?.contacts) return;
-    this.#actualizarIndice(Object.values(this.#store.contacts));
-    this.#sincronizado = true;
+    try {
+      if (this.#sincronizado || !this.#store) return;
+
+      if (typeof this.#store !== 'object' || !this.#store.contacts) {
+        console.error(`[LidSync] Error: El store proporcionado no cumple con los requisitos (Falta objeto 'contacts').`);
+        return;
+      }
+
+      const contactos = Object.values(this.#store.contacts);
+      if (contactos.length > 0) {
+        this.#actualizarIndice(contactos);
+        this.#sincronizado = true;
+      }
+    } catch (error) {
+      console.warn(`[LidSync] Aviso: Error al leer la estructura del store (${error.message}).`);
+    }
   }
 
   esResolvable(lid) { return esLid(lid) && (this.#reverseIndex.has(lid) || this.#cache.has(lid)); }
