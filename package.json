@@ -1,0 +1,25 @@
+{
+  "name": "lidsync",
+  "version": "1.0.0",
+  "description": "Resuelve LIDs de WhatsApp a JIDs @s.whatsapp.net con cache y fallback a Baileys",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "lid",
+    "jid",
+    "resolver"
+  ],
+  "author": "ScriptNex",
+  "license": "MIT",
+  "peerDependencies": {
+    "@whiskeysockets/baileys": "*"
+  }
+}
