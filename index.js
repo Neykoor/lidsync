@@ -25,13 +25,19 @@ export function pluginLid(sock, options = {}) {
       }
     },
     
-    preload: (pares) => resolver.precargarCache(pares),
+    preload: (pares) => {
+        if (pares) resolver.precargarCache(pares);
+    },
     
     getStats: () => resolver.getStats(),
     
     isResolvable: (id) => resolver.esResolvable(id),
 
-    destroy: () => resolver.destroy()
+    destroy: () => {
+        if (typeof resolver.destroy === 'function') {
+            resolver.destroy();
+        }
+    }
   };
 
   return sock;
