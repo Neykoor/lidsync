@@ -18,7 +18,16 @@ export function pluginLid(sock, options = {}) {
         return new Map();
       }
       try {
-        return await resolver.resolverLote(ids, opts);
+        if (typeof resolver.resolverLote === 'function') {
+            return await resolver.resolverLote(ids, opts);
+        } else {
+            const resultMap = new Map();
+            for (const id of ids) {
+                const res = await resolver.resolver(id);
+                if (res) resultMap.set(id, res);
+            }
+            return resultMap;
+        }
       } catch (error) {
         console.warn(`[LidSync] Batch Error:`, error.message);
         return new Map();
