@@ -1,7 +1,7 @@
 {
   "name": "lidsync",
   "version": "5.0.2",
-  "description": "LID → JID Identity Resolver con Cache LRU, Auto-Aprendizaje y Persistencia mejorada",
+  "description": "LID → JID Identity Resolver para Baileys. Cache LRU, índice invertido, resolución batch y auto-aprendizaje desde eventos.",
   "type": "module",
   "main": "index.js",
   "exports": {
