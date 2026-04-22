@@ -1,6 +1,6 @@
 {
   "name": "lidsync",
-  "version": "5.0.0",
+  "version": "5.0.2",
   "description": "LID → JID Identity Resolver con Cache LRU, Auto-Aprendizaje y Persistencia mejorada",
   "type": "module",
   "main": "index.js",
