@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-5.0.0-blue.svg?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-5.0.2-blue.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square"/>
   <img src="https://img.shields.io/badge/Node.js-18%2B-green.svg?style=flat-square&logo=node.js"/>
   <img src="https://img.shields.io/badge/Baileys-%3E%3D6.7.0-purple.svg?style=flat-square"/>
@@ -19,13 +19,11 @@
 
 ---
 
-> ## 🎉 ¡Bienvenidos a LidSync v5 "Gentle"!
+> ## 🔧 LidSync v5.0.2 — Parche de estabilidad
 >
-> Esta versión marca un salto significativo en estabilidad y persistencia. La v5 fue diseñada para ser **infalible pero ligera**: los usuarios ya no se "olvidan" tras un reinicio gracias al auto-aprendizaje pasivo y la persistencia de 24 horas.
+> Esta actualización no añade características nuevas: corrige bugs de fondo que en la v5.0.0 causaban comportamientos silenciosos en producción. Métodos que existían en la API pública pero no estaban implementados, listeners que se quedaban vivos tras un `destroy()`, y un intervalo de limpieza que impedía que Node.js cerrara el proceso limpiamente.
 >
-> **¿Vienes de la v4?** Todo el API que conoces sigue funcionando igual. Solo necesitas actualizar la dependencia y, opcionalmente, adoptar los nuevos métodos.
->
-> 🔭 **¿Qué sigue?** La **v6** está en desarrollo y llegará el próximo mes con aún más mejoras. ¡Mantente pendiente!
+> **¿Vienes de la v5.0.0?** El API es 100% compatible. Solo actualiza la dependencia y opcionalmente adopta `syncStore()`.
 
 ---
 
@@ -39,19 +37,19 @@ WhatsApp introdujo los **LIDs** (`170360431460562@lid`) como identificadores de 
 
 ---
 
-## 🆕 ¿Qué hay de nuevo en la v5?
+## 🆕 ¿Qué se corrigió en la v5.0.2?
 
-| Característica | v4 | v5 "Gentle" |
-|---|---|---|
-| Persistencia de identidades | TTL 1h | **Persistencia 24h con refresco automático** |
-| Aprendizaje de JIDs | Solo en eventos principales | **Pasivo: mensajes, stickers, reacciones** |
-| Logs de mantenimiento | Sin avisos | **Mensajes en consola al limpiar memoria** |
-| Validación del Store | Sin protección | **Protección contra `store.json` corrupto** |
-
-- **Detección Pasiva:** Captura mapeos desde cualquier evento (Mensajes, Stickers, Reacciones).
-- **Persistencia de 24h:** El cache mantiene identidades por un día completo, refrescándose automáticamente con cada interacción.
-- **Logs de Mantenimiento:** Avisos en consola cuando la librería realiza limpieza de memoria.
-- **Validación de Store:** Protección contra archivos `store.json` corruptos o incompletos sin detener el bot.
+| Problema en v5.0.0 | Corrección en v5.0.2 |
+|---|---|
+| `resolveBatch` caía a loop secuencial | **Concurrencia real controlada implementada** |
+| `preload()` llamaba a método inexistente | **`precargarCache()` implementado y funcional** |
+| `getStats()` devolvía `{}` siempre | **Métricas reales de caché e índice** |
+| `has()` no existía en `LidCache` → error en runtime | **Implementado** |
+| `destroy()` dejaba el listener `messages.upsert` vivo | **Los 3 listeners se remueven correctamente** |
+| Limpieza de índice se ejecutaba *después* de insertar | **Se ejecuta *antes* de insertar** |
+| `.unref()` ausente → proceso zombi en Node.js | **Restaurado en el intervalo de limpieza** |
+| `catch` vacíos → errores desaparecían sin traza | **`console.warn` en todos los casos** |
+| `sincronizarDesdeStore()` solo era interno | **`syncStore()` expuesto en la API pública** |
 
 ---
 
@@ -62,8 +60,8 @@ LidSync utiliza una estrategia de tres capas para garantizar que el Owner y los 
 | Nivel | Fuente | Lógica |
 |---|---|---|
 | **1** | **Cache Dinámico** | Persistencia de 24h con refresco automático (LRU). |
-| **2** | **Auto-Aprendizaje** | Captura JIDs reales desde metadatos de mensajes entrantes. |
-| **3** | **Store & Signal** | Fallback a la base de datos local y al repositorio de Baileys. |
+| **2** | **Índice Invertido** | Map en memoria `LID → JID`, O(1). Se promueve al caché en cada consulta. |
+| **3** | **Store & Signal** | Fallback a la base de datos local y al repositorio interno de Baileys. |
 
 ---
 
@@ -71,7 +69,7 @@ LidSync utiliza una estrategia de tres capas para garantizar que el Owner y los 
 
 > **Un LID solo puede resolverse si el usuario ya interactuó con el bot o está en la agenda del número vinculado.**
 
-Esto es una restricción de WhatsApp, no de LidSync. La v5 soluciona esto detectando automáticamente el JID real cuando el usuario envía:
+Esto es una restricción de WhatsApp, no de LidSync. La librería soluciona esto detectando automáticamente el JID real cuando el usuario envía:
 
 - ❌ Eventos de bienvenida con LID puro → no resoluble hasta primera interacción
 - ✅ Un mensaje de texto
@@ -84,12 +82,47 @@ Esto es una restricción de WhatsApp, no de LidSync. La v5 soluciona esto detect
 
 ```bash
 # En tu package.json
-"lidsync": "git+https://github.com/Neykoor/LidSync.git"
+"npm i lidsync"
 ```
 
 ```bash
 npm install
 ```
+
+---
+
+## 🛠️ Vinculación correcta
+
+Para que LidSync funcione es **imprescindible** que el socket, el store y los eventos estén vinculados entre sí. Esta configuración va en tu archivo principal de conexión (`connection.js` o `index.js`), justo después de inicializar el socket y antes de empezar a escuchar mensajes.
+
+```js
+import { makeWASocket, makeInMemoryStore } from "@whiskeysockets/baileys";
+import { pluginLid } from "lidsync";
+
+const store = makeInMemoryStore({});
+
+async function connect() {
+    let sock = makeWASocket({ /* tu config */ });
+
+    // 1. Inyectar LidSync — pasar el store para que aprenda de tus contactos
+    sock = pluginLid(sock, { store });
+
+    // 2. Vincular el store a los eventos del socket
+    store.bind(sock.ev);
+
+    // 3. OPCIONAL: Si tu store carga desde un JSON, forzar sincronización
+    //    una vez que la conexión ya esté abierta
+    sock.ev.on('connection.update', (update) => {
+        if (update.connection === 'open') {
+            sock.lid.syncStore();
+        }
+    });
+
+    return sock;
+}
+```
+
+> **Nota:** `pluginLid` debe llamarse antes de `store.bind()` para que el resolver ya esté suscrito cuando lleguen los primeros eventos de contactos.
 
 ---
 
@@ -99,49 +132,36 @@ npm install
 import { connectToWhatsApp } from './connection.js';
 import { loadEvents } from './loader.js';
 import { pluginLid } from 'lidsync';
-import { StorePro } from 'lidsync/examples/store.js';
+import { makeInMemoryStore } from '@whiskeysockets/baileys';
 
-const store = new StorePro({ path: './data/store.json' });
+const store = makeInMemoryStore({});
 
 async function start() {
     let sock = await connectToWhatsApp();
 
-    // 1. Vincular el store a los eventos del socket
+    sock = pluginLid(sock, { store });
     store.bind(sock.ev);
 
-    // 2. Inyectar LidSync en el socket
-    sock = pluginLid(sock, { store });
-
-    // Ahora sock.lid está disponible en todo el bot
+    // sock.lid ya está disponible en todo el bot
     await loadEvents(sock);
 }
 
 start();
 ```
 
-### Integración con Auto-Aprendizaje (v5)
+### Resolución en mensajes
 
 ```js
-import { pluginLid } from 'lidsync';
-import { StorePro } from './database/store.js';
+sock.ev.on('messages.upsert', async ({ messages }) => {
+    const m = messages[0];
+    if (!m.message || m.key.fromMe) return;
 
-const store = new StorePro({ path: './database/store.json' });
+    const sender = m.key.participant || m.key.remoteJid;
 
-async function start() {
-    let sock = await connectToWhatsApp();
-    
-    // Inyectar LidSync v5
-    sock = pluginLid(sock, { store });
-
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        const m = messages[0];
-        const sender = m.key.participant || m.key.remoteJid;
-        
-        // Resolución transparente — v5 aprende automáticamente de este evento
-        const realJid = await sock.lid.resolve(sender);
-        console.log(`Mensaje de: ${realJid}`);
-    });
-}
+    // resolve() devuelve el JID real o null si no es resoluble aún
+    const realJid = await sock.lid.resolve(sender);
+    console.log(`Mensaje de: ${realJid ?? sender}`);
+});
 ```
 
 ---
@@ -150,7 +170,7 @@ async function start() {
 
 ### `sock.lid.resolve(id)`
 
-Resuelve un LID a su JID real. Si el input ya es un JID (`@s.whatsapp.net`), lo devuelve directamente. En v5, también normaliza sufijos de dispositivo (`:1`, `:2`).
+Resuelve un LID a su JID real. Si el input ya es un JID (`@s.whatsapp.net`), lo devuelve directamente normalizado. Normaliza sufijos de dispositivo (`:1`, `:2`) automáticamente.
 
 ```js
 const jid = await sock.lid.resolve('170360431460562@lid');
@@ -165,29 +185,44 @@ const jid = await sock.lid.resolve('170360431460562@lid');
 
 ### `sock.lid.resolveBatch(ids, opciones?)`
 
-Resuelve múltiples LIDs con concurrencia controlada para no saturar el socket. Los JIDs reales mezclados en el array se resuelven directamente sin consultas adicionales.
+Resuelve múltiples LIDs con concurrencia controlada. Los que ya están en caché se resuelven de inmediato sin consultas adicionales.
 
 ```js
 const ids = ['id1@lid', 'id2@lid', 'id3@lid'];
 
-const resultados = await sock.lid.resolveBatch(ids, { concurrencia: 5 });
+const resultados = await sock.lid.resolveBatch(ids, { concurrency: 5 });
 
 for (const [lid, jid] of resultados) {
-    console.log(`${lid} → ${jid ?? 'no encontrado'}`);
+    console.log(`${lid} → ${jid}`);
 }
 ```
 
-**Retorna:** `Map<string, string | null>`
+**Retorna:** `Map<string, string>` — solo incluye los LIDs que pudieron resolverse.
+
+---
+
+### `sock.lid.syncStore(forzar?)`
+
+Sincroniza manualmente el índice desde el store. Útil cuando el store carga sus datos desde un archivo JSON después de que `pluginLid` fue inicializado.
+
+```js
+// Sincronización normal (solo si no se ha hecho antes)
+sock.lid.syncStore();
+
+// Forzar re-sincronización aunque ya se haya hecho antes
+sock.lid.syncStore(true);
+```
 
 ---
 
 ### `sock.lid.isResolvable(id)`
 
-Verifica si un LID tiene mapeo conocido en el índice o cache **sin hacer consultas de red**.
+Verifica si un LID tiene mapeo conocido en el índice o caché **sin hacer consultas de red**.
 
 ```js
 if (sock.lid.isResolvable('170360431460562@lid')) {
-    // Seguro de resolver sin latencia
+    // Resolución inmediata garantizada
+    const jid = await sock.lid.resolve('170360431460562@lid');
 }
 ```
 
@@ -197,11 +232,13 @@ if (sock.lid.isResolvable('170360431460562@lid')) {
 
 ### `sock.lid.preload(pares)`
 
-Pre-carga mapeos conocidos (por ejemplo, desde tu base de datos) al cache en memoria.
+Pre-carga mapeos conocidos (por ejemplo, desde tu base de datos) al caché e índice en memoria.
 
 ```js
+// Acepta Array de tuplas o Map
 sock.lid.preload([
-    { lid: '123456789@lid', jid: '521234567890@s.whatsapp.net' }
+    ['123456789@lid', '521234567890@s.whatsapp.net'],
+    ['987654321@lid', '521987654321@s.whatsapp.net']
 ]);
 ```
 
@@ -209,16 +246,28 @@ sock.lid.preload([
 
 ### `sock.lid.getStats()`
 
-Devuelve estadísticas del cache LRU. En v5 incluye estimación de memoria mejorada.
+Devuelve estadísticas reales del caché LRU e índice invertido.
 
 ```js
 const stats = sock.lid.getStats();
 console.log(stats);
 /*
 {
-    "size": 1250,
-    "hitRate": "98.5%",
-    "memoryEstimate": "310.20 KB"
+    cache: {
+        size: 1250,
+        maxSize: 7500,
+        hits: 4821,
+        misses: 302,
+        evictions: 0,
+        expirations: 14,
+        hitRate: "94.10%",
+        memoryEstimate: "305.18 KB"
+    },
+    index: {
+        size: 1250,
+        maxSize: 50000
+    },
+    sincronizado: true
 }
 */
 ```
@@ -227,7 +276,7 @@ console.log(stats);
 
 ### `sock.lid.destroy()`
 
-Limpia los listeners del socket y destruye el cache interno. **Úsalo siempre antes de una reconexión.**
+Limpia el caché, vacía el índice y **remueve los 3 listeners** del socket. Llamar siempre antes de una reconexión para evitar listeners duplicados.
 
 ```js
 // En tu lógica de reconexión:
@@ -238,45 +287,21 @@ sock = pluginLid(sock, { store });
 
 ---
 
-## 📊 Monitoreo y Limpieza (v5)
+## 📊 Monitoreo y Limpieza
 
-LidSync v5 gestiona la memoria de forma inteligente. Verás estos mensajes en consola cuando el sistema realice mantenimiento preventivo:
+LidSync gestiona la memoria de forma automática. Verás estos mensajes en consola cuando el sistema realice mantenimiento preventivo:
 
 ```
-[LidSync] Librería limpiando: X entradas caducadas eliminadas.
-[LidSync] Librería limpiando: Índice saturado, se liberaron X espacios.
+[LidSync] Limpieza: 14 entradas caducadas eliminadas.
 ```
 
-Esto ocurre automáticamente cuando el cache supera el **85% de su capacidad**, asegurando que el bot nunca consuma RAM en exceso.
+Esto ocurre automáticamente cuando el caché supera el **85% de su capacidad**. El intervalo usa `.unref()` para no impedir que Node.js cierre el proceso cuando sea necesario.
 
 ---
 
-## 💾 Store Pro (incluido)
+## ⚠️ Importante
 
-El store oficial de Baileys (`makeInMemoryStore`) crece indefinidamente hasta agotar la RAM. LidSync incluye un store optimizado con escrituras atómicas y validación de integridad en v5.
-
-**Ventajas sobre el store oficial:**
-
-| Característica | Store oficial | Store Pro |
-|---|---|---|
-| Consumo de RAM | Ilimitado | Ring buffer (50 msg/chat) |
-| Corrupción en crash | Posible | Escritura atómica `.tmp` |
-| Guardado automático | No | Cada 10s |
-| Graceful shutdown | No | `SIGINT` / `SIGTERM` |
-| Doble bind en reconexión | No protegido | Guard automático |
-| Validación de integridad | No | **Sí (v5)** |
-
-```js
-import { StorePro } from 'lidsync/examples/store.js';
-
-const store = new StorePro({
-    path: './database/store.json',
-    saveIntervalMs: 20000,     // Optimizado para Termux (v5)
-    maxGroupsInCache: 1000
-});
-```
-
-> **Nota:** `messages` es un buffer temporal en RAM. No se persiste en disco intencionalmente para evitar sobrecarga de I/O.
+La librería aprende de forma **pasiva**. Cuanto más tiempo esté el bot encendido y más mensajes/contactos reciba, más precisa será la base de datos de identidades. La vinculación correcta del store es lo que permite que el bot no "olvide" a los usuarios tras un reinicio.
 
 ---
 
@@ -286,16 +311,17 @@ const store = new StorePro({
 pluginLid(sock, { store })
 │
 ├── LidResolver
-│   ├── LidCache (LRU, TTL 24h, máx 5000 entradas)   ← v5: era 1h
-│   ├── #reverseIndex (Map<LID, JID> — índice O(1))
-│   ├── AutoLearn (mensajes, stickers, reacciones)    ← nuevo en v5
-│   └── sock.signalRepository (Baileys interno)
+│   ├── LidCache (LRU, TTL 24h, máx 7500 entradas)
+│   ├── #reverseIndex (Map<LID, JID> — índice O(1), máx 50000)
+│   ├── Auto-Aprendizaje (contacts.upsert, contacts.update, messages.upsert)
+│   └── sock.signalRepository (Baileys interno — fallback)
 │
 └── sock.lid
-    ├── resolve()
-    ├── resolveBatch()
-    ├── isResolvable()
-    ├── preload()
+    ├── resolve(id)
+    ├── resolveBatch(ids, opts?)
+    ├── syncStore(forzar?)
+    ├── isResolvable(id)
+    ├── preload(pares)
     ├── getStats()
     └── destroy()
 ```
