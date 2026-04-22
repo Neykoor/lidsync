@@ -8,10 +8,23 @@ export class LidCache {
   constructor(options = {}) {
     this.#maxSize = Math.max(1, options.maxSize || 7500);
     this.#ttl = Math.max(1000, options.ttlMs || 1000 * 60 * 60 * 24);
-    
+
     if (options.autoPurge !== false) {
       this.#startAutoPurge(options.purgeIntervalMs || 15 * 60 * 1000);
     }
+  }
+
+  has(lid) {
+    if (!lid || typeof lid !== 'string') return false;
+    const entry = this.#data.get(lid);
+    if (!entry) return false;
+
+    if (Date.now() > entry.expiry) {
+      this.#data.delete(lid);
+      this.#stats.expirations++;
+      return false;
+    }
+    return true;
   }
 
   get(lid) {
@@ -37,36 +50,40 @@ export class LidCache {
     entry.expiry = Math.max(entry.expiry, now + (this.#ttl * 0.2));
     this.#data.delete(lid);
     this.#data.set(lid, entry);
-    
+
     this.#stats.hits++;
     return entry.jid;
   }
 
-  set(lid, jid, customTtl) {
-    if (!lid || typeof lid !== 'string' || !jid || typeof jid !== 'string') return false;
+  set(lid, jid, customTtl = null) {
+    if (!lid || !jid || typeof lid !== 'string' || typeof jid !== 'string') return false;
 
-    this.#data.delete(lid);
-    if (this.#data.size >= this.#maxSize) {
-      const oldestKey = this.#data.keys().next().value;
-      this.#data.delete(oldestKey);
+    if (this.#data.size >= this.#maxSize && !this.#data.has(lid)) {
+      const firstKey = this.#data.keys().next().value;
+      this.#data.delete(firstKey);
       this.#stats.evictions++;
     }
 
+    const ttlToUse = customTtl !== null ? customTtl : this.#ttl;
+
     this.#data.set(lid, {
       jid,
-      expiry: Date.now() + (customTtl || this.#ttl)
+      expiry: Date.now() + ttlToUse
     });
+
     return true;
   }
 
-  setMany(pairs) {
-    if (!pairs) return 0;
+  setMany(entries, customTtl = null) {
     let added = 0;
-    const entries = Array.isArray(pairs) ? pairs : Object.entries(pairs);
     for (const [lid, jid] of entries) {
-      if (this.set(lid, jid)) added++;
+      if (this.set(lid, jid, customTtl)) added++;
     }
     return added;
+  }
+
+  preload(entries) {
+    return this.setMany(entries);
   }
 
   getStats() {
@@ -92,7 +109,7 @@ export class LidCache {
       if (limit !== null && purged >= limit) break;
     }
     if (purged > 0) {
-      console.log(`[LidSync] Librería limpiando: ${purged} entradas caducadas eliminadas.`);
+      console.log(`[LidSync] Limpieza: ${purged} entradas caducadas eliminadas.`);
     }
     return purged;
   }
@@ -104,7 +121,10 @@ export class LidCache {
         this.purgeExpired(100);
       }
     }, intervalMs);
-    if (this.#purgeInterval.unref) this.#purgeInterval.unref();
+
+    if (this.#purgeInterval.unref) {
+      this.#purgeInterval.unref();
+    }
   }
 
   #stopAutoPurge() {
@@ -114,8 +134,8 @@ export class LidCache {
     }
   }
 
-  delete(lid) { return this.#data.delete(lid); }
-  clear() { this.#data.clear(); }
-  destroy() { this.#stopAutoPurge(); this.#data.clear(); }
-  get size() { return this.#data.size; }
+  destroy() {
+    this.#stopAutoPurge();
+    this.#data.clear();
+  }
 }
