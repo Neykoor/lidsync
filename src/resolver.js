@@ -19,14 +19,32 @@ function limpiarJid(valor) {
 }
 
 export class LidResolver {
-  #cache; #sock; #store; #reverseIndex = new Map(); #handler; #maxIndexSize; #sincronizado = false;
+  #cache;
+  #sock;
+  #store;
+  #reverseIndex = new Map();
+  #handler;
+  #msgHandler;
+  #maxIndexSize;
+  #sincronizado = false;
 
   constructor(sock, options = {}) {
     this.#sock = sock;
     this.#store = options.store || null;
     this.#cache = new LidCache(options.cache || {});
     this.#maxIndexSize = Math.max(1000, options.maxIndexSize || 50000);
+
     this.#handler = (contactos) => this.#actualizarIndice(contactos);
+    this.#msgHandler = async ({ messages }) => {
+      for (const msg of messages) {
+        if (!msg.message || msg.key.fromMe) continue;
+        const sender = msg.key.participant || msg.key.remoteJid;
+        if (esLid(sender)) {
+          this.resolver(sender).catch(e => console.warn(`[LidSync] Event Resolve Error:`, e.message));
+        }
+      }
+    };
+
     this.sincronizarDesdeStore();
     this.#suscribirAEventos();
   }
@@ -34,46 +52,82 @@ export class LidResolver {
   #suscribirAEventos() {
     this.#sock.ev.on("contacts.upsert", this.#handler);
     this.#sock.ev.on("contacts.update", this.#handler);
-
-    this.#sock.ev.on("messages.upsert", ({ messages }) => {
-      for (const m of messages) {
-        const id = m.key.participant || m.key.remoteJid;
-        if (id && esLid(id)) {
-          const pn = m.key.participant?.split(':')[0] || m.key.remoteJid?.split(':')[0];
-          if (pn && !pn.endsWith(SUFIJO_LID)) {
-            this.#actualizarIndice([{ lid: id, phoneNumber: pn }]);
-          }
-        }
-      }
-    });
-  }
-
-  #limpiarExcesoIndice() {
-    if (this.#reverseIndex.size > this.#maxIndexSize) {
-      const cantidadABorrar = 100;
-      const keysToDelete = Array.from(this.#reverseIndex.keys()).slice(0, cantidadABorrar);
-      for (const key of keysToDelete) {
-        this.#reverseIndex.delete(key);
-      }
-      console.log(`[LidSync] Librería limpiando: Índice saturado, se liberaron ${cantidadABorrar} espacios.`);
-    }
+    this.#sock.ev.on("messages.upsert", this.#msgHandler);
   }
 
   #actualizarIndice(contactos) {
     if (!Array.isArray(contactos)) return;
+
     for (const c of contactos) {
+      this.#limpiarExcesoIndice();
+
       let lid = c.lid || (esLid(c.id) ? c.id : null);
       let jid = c.phoneNumber || (esJidResuelto(c.id) ? c.id : null);
+
       if (lid && jid) {
-        const lidNorm = lid.endsWith(SUFIJO_LID) ? lid : `${lid}${SUFIJO_LID}`;
         const jidLimpio = limpiarJid(jid);
         if (jidLimpio) {
-          this.#reverseIndex.set(lidNorm, jidLimpio);
-          this.#cache.set(lidNorm, jidLimpio);
+          this.#reverseIndex.set(lid, jidLimpio);
+          this.#cache.set(lid, jidLimpio);
         }
       }
     }
-    this.#limpiarExcesoIndice();
+  }
+
+  #limpiarExcesoIndice() {
+    if (this.#reverseIndex.size >= this.#maxIndexSize) {
+      const keys = Array.from(this.#reverseIndex.keys());
+      const toDelete = keys.slice(0, Math.floor(this.#maxIndexSize * 0.1));
+      for (const key of toDelete) {
+        this.#reverseIndex.delete(key);
+      }
+    }
+  }
+
+  esResolvable(id) {
+    return esLid(id) && (this.#cache.has(id) || this.#reverseIndex.has(id));
+  }
+
+  precargarCache(pares) {
+    if (!Array.isArray(pares) && !(pares instanceof Map)) return;
+
+    for (const [lid, jid] of pares) {
+      if (esLid(lid) && esJidResuelto(jid)) {
+        this.#limpiarExcesoIndice();
+        this.#reverseIndex.set(lid, jid);
+        this.#cache.set(lid, jid);
+      }
+    }
+  }
+
+  getStats() {
+    return {
+      cache: this.#cache.getStats(),
+      index: {
+        size: this.#reverseIndex.size,
+        maxSize: this.#maxIndexSize
+      },
+      sincronizado: this.#sincronizado
+    };
+  }
+
+  sincronizarDesdeStore(forzar = false) {
+    try {
+      if ((this.#sincronizado && !forzar) || !this.#store) return;
+
+      if (typeof this.#store !== 'object' || !this.#store.contacts) {
+        console.warn(`[LidSync] Store no está listo o es inválido.`);
+        return;
+      }
+
+      const contactos = Object.values(this.#store.contacts);
+      if (contactos.length > 0) {
+        this.#actualizarIndice(contactos);
+        this.#sincronizado = true;
+      }
+    } catch (error) {
+      console.warn(`[LidSync] Store Sync Error:`, error.message);
+    }
   }
 
   async resolver(id) {
@@ -97,35 +151,52 @@ export class LidResolver {
         if (pn) {
           const jidReal = limpiarJid(pn);
           if (jidReal) {
+            this.#limpiarExcesoIndice();
             this.#reverseIndex.set(id, jidReal);
             this.#cache.set(id, jidReal);
             return jidReal;
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn(`[LidSync] Error signalRepository:`, e.message);
+    }
     return null;
   }
 
-  sincronizarDesdeStore() {
-    try {
-      if (this.#sincronizado || !this.#store) return;
+  async resolverLote(ids, opts = {}) {
+    const concurrency = opts.concurrency || 5;
+    const resultMap = new Map();
+    const pendientes = [];
 
-      if (typeof this.#store !== 'object' || !this.#store.contacts) {
-        console.error(`[LidSync] Error: El store proporcionado no cumple con los requisitos (Falta objeto 'contacts').`);
-        return;
-      }
+    for (const id of ids) {
+      if (!esLid(id)) continue;
 
-      const contactos = Object.values(this.#store.contacts);
-      if (contactos.length > 0) {
-        this.#actualizarIndice(contactos);
-        this.#sincronizado = true;
+      const cached = this.#cache.get(id) || this.#reverseIndex.get(id);
+      if (cached) {
+        resultMap.set(id, cached);
+        this.#cache.set(id, cached); 
+      } else {
+        pendientes.push(id);
       }
-    } catch (error) {
-      console.warn(`[LidSync] Aviso: Error al leer la estructura del store (${error.message}).`);
     }
+
+    for (let i = 0; i < pendientes.length; i += concurrency) {
+      const chunk = pendientes.slice(i, i + concurrency);
+      await Promise.all(chunk.map(async (id) => {
+        const res = await this.resolver(id);
+        if (res) resultMap.set(id, res);
+      }));
+    }
+
+    return resultMap;
   }
 
-  esResolvable(lid) { return esLid(lid) && (this.#reverseIndex.has(lid) || this.#cache.has(lid)); }
-  destroy() { this.#cache.destroy(); this.#reverseIndex.clear(); }
+  destroy() {
+    this.#cache.destroy();
+    this.#reverseIndex.clear();
+    this.#sock.ev.off("contacts.upsert", this.#handler);
+    this.#sock.ev.off("contacts.update", this.#handler);
+    this.#sock.ev.off("messages.upsert", this.#msgHandler);
+  }
 }
