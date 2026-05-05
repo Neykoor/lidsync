@@ -1,10 +1,11 @@
 import { LidCache } from "./cache.js";
 
 const SUFIJO_LID = "@lid";
+const SUFIJO_LID_HOSTED = "@hosted.lid";
 const SUFIJO_JID = "@s.whatsapp.net";
 
 function esLid(valor) {
-  return typeof valor === "string" && valor.endsWith(SUFIJO_LID);
+  return typeof valor === "string" && (valor.endsWith(SUFIJO_LID) || valor.endsWith(SUFIJO_LID_HOSTED));
 }
 
 function esJidResuelto(valor) {
@@ -27,6 +28,8 @@ export class LidResolver {
   #msgHandler;
   #lidMappingHandler;
   #historyHandler;
+  #groupParticipantHandler;
+  #groupsUpsertHandler;
   #maxIndexSize;
   #sincronizado = false;
 
@@ -37,23 +40,22 @@ export class LidResolver {
     this.#maxIndexSize = Math.max(1000, options.maxIndexSize || 50000);
 
     this.#handler = (contactos) => this.#actualizarIndice(contactos);
-    
+
     this.#msgHandler = async ({ messages }) => {
       const nuevosPares = [];
       for (const msg of messages) {
         if (!msg.message || msg.key.fromMe) continue;
-        
+
         const sender = msg.key.participant || msg.key.remoteJid;
         const alt = msg.key.participantAlt || msg.key.remoteJidAlt;
 
         if (sender && alt) {
           const lid = esLid(sender) ? sender : esLid(alt) ? alt : null;
           const pn = esJidResuelto(sender) ? sender : esJidResuelto(alt) ? alt : null;
-          
+
           if (lid && pn) {
             const jidLimpio = limpiarJid(pn);
             if (jidLimpio) {
-              this.#limpiarExcesoIndice();
               this.#reverseIndex.set(lid, jidLimpio);
               this.#cache.set(lid, jidLimpio);
               nuevosPares.push({ lid, pn: jidLimpio });
@@ -62,18 +64,21 @@ export class LidResolver {
         }
 
         if (esLid(sender)) {
-          this.resolver(sender).catch(e => console.warn(`[LidSync] Event Resolve Error:`, e.message));
+          this.resolver(sender).catch(() => {});
         }
       }
-      if (nuevosPares.length > 0) this.#guardarEnSignalRepository(nuevosPares);
+      if (nuevosPares.length > 0) {
+        this.#limpiarExcesoIndice();
+        this.#guardarEnSignalRepository(nuevosPares);
+      }
     };
 
     this.#lidMappingHandler = ({ lid, pn }) => {
       const jidLimpio = limpiarJid(pn);
       if (lid && jidLimpio) {
-        this.#limpiarExcesoIndice();
         this.#reverseIndex.set(lid, jidLimpio);
         this.#cache.set(lid, jidLimpio);
+        this.#limpiarExcesoIndice();
         this.#guardarEnSignalRepository([{ lid, pn: jidLimpio }]);
       }
     };
@@ -84,13 +89,44 @@ export class LidResolver {
       for (const { lid, pn } of lidPnMappings) {
         const jidLimpio = limpiarJid(pn);
         if (lid && jidLimpio) {
-          this.#limpiarExcesoIndice();
           this.#reverseIndex.set(lid, jidLimpio);
           this.#cache.set(lid, jidLimpio);
           nuevosPares.push({ lid, pn: jidLimpio });
         }
       }
-      if (nuevosPares.length > 0) this.#guardarEnSignalRepository(nuevosPares);
+      if (nuevosPares.length > 0) {
+        this.#limpiarExcesoIndice();
+        this.#guardarEnSignalRepository(nuevosPares);
+      }
+    };
+
+    this.#groupParticipantHandler = ({ author, authorPn, participants }) => {
+      const nuevosPares = [];
+      if (author && authorPn) {
+        const lid = esLid(author) ? author : null;
+        const jidLimpio = lid ? limpiarJid(authorPn) : null;
+        if (lid && jidLimpio) {
+          this.#reverseIndex.set(lid, jidLimpio);
+          this.#cache.set(lid, jidLimpio);
+          nuevosPares.push({ lid, pn: jidLimpio });
+        }
+      }
+      if (nuevosPares.length > 0) {
+          this.#limpiarExcesoIndice();
+          this.#guardarEnSignalRepository(nuevosPares);
+      }
+      if (Array.isArray(participants)) {
+         this.#actualizarIndice(participants);
+      }
+    };
+
+    this.#groupsUpsertHandler = (groups) => {
+      if (!Array.isArray(groups)) return;
+      for (const group of groups) {
+         if (Array.isArray(group.participants)) {
+            this.#actualizarIndice(group.participants);
+         }
+      }
     };
 
     this.sincronizarDesdeStore();
@@ -103,6 +139,8 @@ export class LidResolver {
     this.#sock.ev.on("messages.upsert", this.#msgHandler);
     this.#sock.ev.on("lid-mapping.update", this.#lidMappingHandler);
     this.#sock.ev.on("messaging-history.set", this.#historyHandler);
+    this.#sock.ev.on("group-participants.update", this.#groupParticipantHandler);
+    this.#sock.ev.on("groups.upsert", this.#groupsUpsertHandler);
   }
 
   #guardarEnSignalRepository(pares) {
@@ -111,7 +149,6 @@ export class LidResolver {
         this.#sock.signalRepository.lidMapping.storeLIDPNMappings(pares);
       }
     } catch (e) {
-      console.warn(`[LidSync] Error guardando en signalRepository:`, e.message);
     }
   }
 
@@ -126,15 +163,17 @@ export class LidResolver {
       if (lid && jid) {
         const jidLimpio = limpiarJid(jid);
         if (jidLimpio) {
-          this.#limpiarExcesoIndice();
           this.#reverseIndex.set(lid, jidLimpio);
           this.#cache.set(lid, jidLimpio);
           nuevosPares.push({ lid, pn: jidLimpio });
         }
       }
     }
-    
-    if (nuevosPares.length > 0) this.#guardarEnSignalRepository(nuevosPares);
+
+    if (nuevosPares.length > 0) {
+       this.#limpiarExcesoIndice();
+       this.#guardarEnSignalRepository(nuevosPares);
+    }
   }
 
   #limpiarExcesoIndice() {
@@ -157,14 +196,16 @@ export class LidResolver {
 
     for (const [lid, jid] of pares) {
       if (esLid(lid) && esJidResuelto(jid)) {
-        this.#limpiarExcesoIndice();
         this.#reverseIndex.set(lid, jid);
         this.#cache.set(lid, jid);
         nuevosPares.push({ lid, pn: jid });
       }
     }
 
-    if (nuevosPares.length > 0) this.#guardarEnSignalRepository(nuevosPares);
+    if (nuevosPares.length > 0) {
+      this.#limpiarExcesoIndice();
+      this.#guardarEnSignalRepository(nuevosPares);
+    }
   }
 
   getStats() {
@@ -192,7 +233,6 @@ export class LidResolver {
         this.#sincronizado = true;
       }
     } catch (error) {
-      console.warn(`[LidSync] Store Sync Error:`, error.message);
     }
   }
 
@@ -225,7 +265,6 @@ export class LidResolver {
         }
       }
     } catch (e) {
-      console.warn(`[LidSync] Error signalRepository:`, e.message);
     }
     return null;
   }
@@ -238,12 +277,17 @@ export class LidResolver {
     for (const id of ids) {
       if (!esLid(id)) continue;
 
-      const cached = this.#cache.get(id) || this.#reverseIndex.get(id);
-      if (cached) {
-        resultMap.set(id, cached);
-        this.#cache.set(id, cached); 
+      const fromCache = this.#cache.get(id);
+      if (fromCache) {
+        resultMap.set(id, fromCache);
       } else {
-        pendientes.push(id);
+        const fromIndex = this.#reverseIndex.get(id);
+        if (fromIndex) {
+          this.#cache.set(id, fromIndex);
+          resultMap.set(id, fromIndex);
+        } else {
+          pendientes.push(id);
+        }
       }
     }
 
@@ -253,9 +297,8 @@ export class LidResolver {
       const repo = this.#sock.signalRepository?.lidMapping;
       if (repo?.getPNsForLIDs) {
         const mapeosLote = await repo.getPNsForLIDs(pendientes);
-        if (mapeosLote) {
-          const entries = mapeosLote instanceof Map ? mapeosLote.entries() : Object.entries(mapeosLote);
-          for (const [lid, pn] of entries) {
+        if (mapeosLote && Array.isArray(mapeosLote)) {
+          for (const { lid, pn } of mapeosLote) {
             if (pn) {
               const jidReal = limpiarJid(pn);
               if (jidReal) {
@@ -269,7 +312,6 @@ export class LidResolver {
         }
       }
     } catch (e) {
-      console.warn(`[LidSync] Error signalRepository batch:`, e.message);
     }
 
     pendientes = pendientes.filter(id => !resultMap.has(id));
@@ -293,5 +335,7 @@ export class LidResolver {
     this.#sock.ev.off("messages.upsert", this.#msgHandler);
     this.#sock.ev.off("lid-mapping.update", this.#lidMappingHandler);
     this.#sock.ev.off("messaging-history.set", this.#historyHandler);
+    this.#sock.ev.off("group-participants.update", this.#groupParticipantHandler);
+    this.#sock.ev.off("groups.upsert", this.#groupsUpsertHandler);
   }
-    }
+}
