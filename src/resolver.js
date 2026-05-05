@@ -18,7 +18,8 @@ function esJidResuelto(valor) {
 
 function limpiarJid(valor) {
   if (typeof valor !== "string") return null;
-  const numero = valor.split("@")[0].split(":")[0].replace(/\D/g, "");
+  const raw = valor.split("@")[0].split(":")[0];
+  const numero = raw.replace(/\D/g, "");
   if (!esNumeroValido(numero)) return null;
   return `${numero}${SUFIJO_JID}`;
 }
@@ -309,11 +310,13 @@ export class LidResolver {
       if ((this.#sincronizado && !forzar) || !this.#store) return;
       if (typeof this.#store !== "object") return;
 
+      let hayDatos = false;
+
       if (this.#store.contacts) {
         const contactos = Object.values(this.#store.contacts);
         if (contactos.length > 0) {
           this.#actualizarIndice(contactos);
-          this.#sincronizado = true;
+          hayDatos = true;
         }
       }
 
@@ -322,8 +325,12 @@ export class LidResolver {
         for (const chat of chats) {
           if (Array.isArray(chat.participants) && chat.participants.length > 0) {
             this.#actualizarIndice(chat.participants);
+            hayDatos = true;
           }
         }
+      }
+
+      if (hayDatos) {
         this.#sincronizado = true;
       }
     } catch (_) {}
@@ -422,6 +429,16 @@ export class LidResolver {
     return resultMap;
   }
 
+  async resolverParticipantes(participants) {
+    if (!Array.isArray(participants)) return new Map();
+
+    const lids = participants
+      .map((p) => (typeof p === "string" ? p : p?.id || p?.lid))
+      .filter((id) => esLid(id));
+
+    return this.resolverLote(lids);
+  }
+
   destroy() {
     this.#cache.destroy();
     this.#reverseIndex.clear();
@@ -436,5 +453,4 @@ export class LidResolver {
     this.#sock.ev.off("groups.upsert", this.#groupsUpsertHandler);
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
   }
-          }
-          
+    }
