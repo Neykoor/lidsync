@@ -14,13 +14,22 @@ export function pluginLid(sock, options = {}) {
     },
 
     resolveBatch: async (ids, opts) => {
-      if (!ids || typeof ids[Symbol.iterator] !== 'function') {
+      if (!ids || typeof ids[Symbol.iterator] !== "function") {
         return new Map();
       }
       try {
         return await resolver.resolverLote(ids, opts);
       } catch (error) {
         console.warn("[LidSync] Batch Error:", error.message);
+        return new Map();
+      }
+    },
+
+    resolveParticipants: async (participants) => {
+      try {
+        return await resolver.resolverParticipantes(participants);
+      } catch (error) {
+        console.warn("[LidSync] resolveParticipants Error:", error.message);
         return new Map();
       }
     },
@@ -37,7 +46,7 @@ export function pluginLid(sock, options = {}) {
       resolver.sincronizarDesdeStore(forzar);
     },
 
-    destroy: () => resolver.destroy()
+    destroy: () => resolver.destroy(),
   };
 
   return sock;
