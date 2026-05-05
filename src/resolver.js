@@ -39,6 +39,7 @@ export class LidResolver {
   #groupMemberTagHandler;
   #maxIndexSize;
   #sincronizado = false;
+  #joinCallbacks = [];
 
   constructor(sock, options = {}) {
     this.#sock = sock;
@@ -111,7 +112,7 @@ export class LidResolver {
       }
     };
 
-    this.#groupParticipantHandler = ({ author, authorPn, participants }) => {
+    this.#groupParticipantHandler = ({ id: groupId, action, author, authorPn, participants }) => {
       const nuevosPares = [];
 
       if (author && authorPn) {
@@ -124,6 +125,8 @@ export class LidResolver {
         }
       }
 
+      const joinedJids = [];
+
       if (Array.isArray(participants)) {
         for (const p of participants) {
           if (p.lid && p.phoneNumber) {
@@ -132,11 +135,32 @@ export class LidResolver {
               this.#reverseIndex.set(p.lid, jidLimpio);
               this.#cache.set(p.lid, jidLimpio);
               nuevosPares.push({ lid: p.lid, pn: jidLimpio });
+              if (action === "add" || action === "promote") {
+                joinedJids.push({ lid: p.lid, jid: jidLimpio });
+              }
             }
           } else if (esLid(p.id || p.lid)) {
             const lid = p.lid || p.id;
             if (!this.#reverseIndex.has(lid) && !this.#cache.has(lid)) {
-              this.resolver(lid).catch(() => {});
+              if (action === "add") {
+                // Resolver de forma asíncrona y notificar al resolver el LID
+                this.resolver(lid).then((jid) => {
+                  if (jid && this.#joinCallbacks.length > 0) {
+                    this.#dispararOnJoin({ groupId, lid, jid });
+                  }
+                }).catch(() => {});
+              } else {
+                this.resolver(lid).catch(() => {});
+              }
+            } else if (action === "add") {
+              const jid = this.#reverseIndex.get(lid) || this.#cache.get(lid);
+              if (jid) joinedJids.push({ lid, jid });
+            }
+          } else if (!esLid(p.id)) {
+            // Participante con JID normal (sin LID)
+            const jidLimpio = limpiarJid(p.id || p);
+            if (jidLimpio && (action === "add")) {
+              joinedJids.push({ lid: null, jid: jidLimpio });
             }
           }
         }
@@ -145,6 +169,13 @@ export class LidResolver {
       if (nuevosPares.length > 0) {
         this.#limpiarExcesoIndice();
         this.#guardarEnSignalRepository(nuevosPares);
+      }
+
+      // Disparar callbacks de bienvenida para todos los que se unieron
+      if (joinedJids.length > 0 && this.#joinCallbacks.length > 0) {
+        for (const { lid, jid } of joinedJids) {
+          this.#dispararOnJoin({ groupId, lid, jid });
+        }
       }
     };
 
@@ -439,6 +470,19 @@ export class LidResolver {
     return this.resolverLote(lids);
   }
 
+  #dispararOnJoin({ groupId, lid, jid }) {
+    for (const cb of this.#joinCallbacks) {
+      try {
+        cb({ groupId, lid, jid });
+      } catch (_) {}
+    }
+  }
+
+  onJoin(callback) {
+    if (typeof callback !== "function") return;
+    this.#joinCallbacks.push(callback);
+  }
+
   destroy() {
     this.#cache.destroy();
     this.#reverseIndex.clear();
@@ -452,5 +496,6 @@ export class LidResolver {
     this.#sock.ev.off("group.member-tag.update", this.#groupMemberTagHandler);
     this.#sock.ev.off("groups.upsert", this.#groupsUpsertHandler);
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
+    this.#joinCallbacks = [];
   }
-        }
+}
