@@ -31,6 +31,7 @@ export class LidResolver {
   #groupParticipantHandler;
   #groupsUpsertHandler;
   #groupJoinRequestHandler;
+  #groupMemberTagHandler;
   #maxIndexSize;
   #sincronizado = false;
 
@@ -122,25 +123,41 @@ export class LidResolver {
     };
 
     this.#groupJoinRequestHandler = ({ author, authorPn, participant, participantPn }) => {
-        const nuevosPares = [];
-        if (author && authorPn) {
-          const jid = limpiarJid(authorPn);
-          if (esLid(author) && jid) nuevosPares.push({ lid: author, pn: jid });
+      const nuevosPares = [];
+      if (author && authorPn) {
+        const jid = limpiarJid(authorPn);
+        if (esLid(author) && jid) nuevosPares.push({ lid: author, pn: jid });
+      }
+      if (participant && participantPn) {
+        const jid = limpiarJid(participantPn);
+        if (esLid(participant) && jid) nuevosPares.push({ lid: participant, pn: jid });
+      }
+      
+      if (nuevosPares.length > 0) {
+        for (const { lid, pn } of nuevosPares) {
+          this.#reverseIndex.set(lid, pn);
+          this.#cache.set(lid, pn);
         }
-        if (participant && participantPn) {
-          const jid = limpiarJid(participantPn);
-          if (esLid(participant) && jid) nuevosPares.push({ lid: participant, pn: jid });
-        }
-        
-        if (nuevosPares.length > 0) {
-          for (const { lid, pn } of nuevosPares) {
-            this.#reverseIndex.set(lid, pn);
-            this.#cache.set(lid, pn);
-          }
-          this.#limpiarExcesoIndice();
-          this.#guardarEnSignalRepository(nuevosPares);
-        }
-      };
+        this.#limpiarExcesoIndice();
+        this.#guardarEnSignalRepository(nuevosPares);
+      }
+    };
+
+    this.#groupMemberTagHandler = ({ participant, participantAlt }) => {
+      if (!participant || !participantAlt) return;
+      const lid = esLid(participant) ? participant : esLid(participantAlt) ? participantAlt : null;
+      const pn = esJidResuelto(participant) ? participant : esJidResuelto(participantAlt) ? participantAlt : null;
+      
+      if (!lid || !pn) return;
+      
+      const jidLimpio = limpiarJid(pn);
+      if (!jidLimpio) return;
+      
+      this.#reverseIndex.set(lid, jidLimpio);
+      this.#cache.set(lid, jidLimpio);
+      this.#limpiarExcesoIndice();
+      this.#guardarEnSignalRepository([{ lid, pn: jidLimpio }]);
+    };
 
     this.#groupsUpsertHandler = (groups) => {
       if (!Array.isArray(groups)) return;
@@ -163,6 +180,7 @@ export class LidResolver {
     this.#sock.ev.on("messaging-history.set", this.#historyHandler);
     this.#sock.ev.on("group-participants.update", this.#groupParticipantHandler);
     this.#sock.ev.on("group.join-request", this.#groupJoinRequestHandler);
+    this.#sock.ev.on("group.member-tag.update", this.#groupMemberTagHandler);
     this.#sock.ev.on("groups.upsert", this.#groupsUpsertHandler);
     this.#sock.ev.on("groups.update", this.#groupsUpsertHandler);
   }
@@ -361,6 +379,7 @@ export class LidResolver {
     this.#sock.ev.off("messaging-history.set", this.#historyHandler);
     this.#sock.ev.off("group-participants.update", this.#groupParticipantHandler);
     this.#sock.ev.off("group.join-request", this.#groupJoinRequestHandler);
+    this.#sock.ev.off("group.member-tag.update", this.#groupMemberTagHandler);
     this.#sock.ev.off("groups.upsert", this.#groupsUpsertHandler);
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
   }
