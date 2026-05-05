@@ -6,10 +6,7 @@ const SUFIJO_LID_HOSTED = "@hosted.lid";
 const SUFIJO_JID = "@s.whatsapp.net";
 
 function esLid(valor) {
-  return (
-    typeof valor === "string" &&
-    (valor.endsWith(SUFIJO_LID) || valor.endsWith(SUFIJO_LID_HOSTED))
-  );
+  return typeof valor === "string" && (valor.endsWith(SUFIJO_LID) || valor.endsWith(SUFIJO_LID_HOSTED));
 }
 
 function esJidResuelto(valor) {
@@ -18,10 +15,8 @@ function esJidResuelto(valor) {
 
 function limpiarJid(valor) {
   if (typeof valor !== "string") return null;
-  const raw = valor.split("@")[0].split(":")[0];
-  const numero = raw.replace(/\D/g, "");
-  if (!esNumeroValido(numero)) return null;
-  return `${numero}${SUFIJO_JID}`;
+  const numero = valor.split("@")[0].split(":")[0].replace(/\D/g, "");
+  return esNumeroValido(numero) ? `${numero}${SUFIJO_JID}` : null;
 }
 
 export class LidResolver {
@@ -48,11 +43,10 @@ export class LidResolver {
     this.#store = options.store || null;
     this.#cache = new LidCache(options.cache || {});
     this.#maxIndexSize = Math.max(1000, options.maxIndexSize || 50000);
-    this.#indexTtl = options.indexTtlMs ?? 1000 * 60 * 60 * 6;
+    this.#indexTtl = options.indexTtlMs ?? 21600000;
 
-    const purgeInterval = options.indexPurgeIntervalMs ?? 1000 * 60 * 30;
-    this.#purgeInterval = setInterval(() => this.#purgarInactivos(), purgeInterval);
-    if (this.#purgeInterval.unref) this.#purgeInterval.unref();
+    this.#purgeInterval = setInterval(() => this.#purgarInactivos(), options.indexPurgeIntervalMs ?? 1800000);
+    this.#purgeInterval.unref?.();
 
     this.#handler = (contactos) => this.#actualizarIndice(contactos);
 
@@ -60,17 +54,12 @@ export class LidResolver {
       const nuevosPares = [];
       for (const msg of messages) {
         if (!msg.message || msg.key.fromMe) continue;
-
         const sender = msg.key.participant || msg.key.remoteJid;
         const alt = msg.key.participantAlt || msg.key.remoteJidAlt;
 
         if (sender && alt) {
           const lid = esLid(sender) ? sender : esLid(alt) ? alt : null;
-          const pn = esJidResuelto(sender)
-            ? sender
-            : esJidResuelto(alt)
-            ? alt
-            : null;
+          const pn = esJidResuelto(sender) ? sender : esJidResuelto(alt) ? alt : null;
 
           if (lid && pn) {
             const jidLimpio = limpiarJid(pn);
@@ -81,12 +70,9 @@ export class LidResolver {
             }
           }
         }
-
-        if (esLid(sender)) {
-          this.resolver(sender).catch(() => {});
-        }
+        if (esLid(sender)) this.resolver(sender).catch(() => {});
       }
-      if (nuevosPares.length > 0) {
+      if (nuevosPares.length) {
         this.#limpiarExcesoIndice();
         this.#guardarEnSignalRepository(nuevosPares);
       }
@@ -103,7 +89,7 @@ export class LidResolver {
     };
 
     this.#historyHandler = ({ lidPnMappings }) => {
-      if (!Array.isArray(lidPnMappings) || lidPnMappings.length === 0) return;
+      if (!Array.isArray(lidPnMappings) || !lidPnMappings.length) return;
       const nuevosPares = [];
       for (const { lid, pn } of lidPnMappings) {
         const jidLimpio = limpiarJid(pn);
@@ -113,7 +99,7 @@ export class LidResolver {
           nuevosPares.push({ lid, pn: jidLimpio });
         }
       }
-      if (nuevosPares.length > 0) {
+      if (nuevosPares.length) {
         this.#limpiarExcesoIndice();
         this.#guardarEnSignalRepository(nuevosPares);
       }
@@ -145,18 +131,17 @@ export class LidResolver {
         }
       }
 
-      if (nuevosPares.length > 0) {
+      if (nuevosPares.length) {
         this.#limpiarExcesoIndice();
         this.#guardarEnSignalRepository(nuevosPares);
       }
 
-      if (action === "add" && this.#joinCallbacks.length > 0) {
+      if (action === "add" && this.#joinCallbacks.length) {
         this.resolverParticipantes(participants).then((resolvedMap) => {
           for (const p of participants) {
             const lid = p.lid || (typeof p.id === "string" && p.id.endsWith("@lid") ? p.id : null);
             const jidRaw = p.phoneNumber ? `${p.phoneNumber}@s.whatsapp.net` : p.id;
             const jidFinal = resolvedMap.get(lid || p.id) || limpiarJid(jidRaw) || jidRaw;
-
             this.#dispararOnJoin({ groupId, lid, jid: jidFinal });
           }
         }).catch(() => {});
@@ -165,17 +150,16 @@ export class LidResolver {
 
     this.#groupJoinRequestHandler = ({ author, authorPn, participant, participantPn }) => {
       const nuevosPares = [];
-      if (author && authorPn) {
+      if (author && authorPn && esLid(author)) {
         const jid = limpiarJid(authorPn);
-        if (esLid(author) && jid) nuevosPares.push({ lid: author, pn: jid });
+        if (jid) nuevosPares.push({ lid: author, pn: jid });
       }
-      if (participant && participantPn) {
+      if (participant && participantPn && esLid(participant)) {
         const jid = limpiarJid(participantPn);
-        if (esLid(participant) && jid)
-          nuevosPares.push({ lid: participant, pn: jid });
+        if (jid) nuevosPares.push({ lid: participant, pn: jid });
       }
 
-      if (nuevosPares.length > 0) {
+      if (nuevosPares.length) {
         for (const { lid, pn } of nuevosPares) {
           this.#setIndice(lid, pn);
           this.#cache.set(lid, pn);
@@ -187,20 +171,10 @@ export class LidResolver {
 
     this.#groupMemberTagHandler = ({ participant, participantAlt }) => {
       if (!participant || !participantAlt) return;
-
-      const lid = esLid(participant)
-        ? participant
-        : esLid(participantAlt)
-        ? participantAlt
-        : null;
-      const pn = esJidResuelto(participant)
-        ? participant
-        : esJidResuelto(participantAlt)
-        ? participantAlt
-        : null;
+      const lid = esLid(participant) ? participant : esLid(participantAlt) ? participantAlt : null;
+      const pn = esJidResuelto(participant) ? participant : esJidResuelto(participantAlt) ? participantAlt : null;
 
       if (!lid || !pn) return;
-
       const jidLimpio = limpiarJid(pn);
       if (!jidLimpio) return;
 
@@ -213,9 +187,7 @@ export class LidResolver {
     this.#groupsUpsertHandler = (groups) => {
       if (!Array.isArray(groups)) return;
       for (const group of groups) {
-        if (Array.isArray(group.participants)) {
-          this.#actualizarIndice(group.participants);
-        }
+        if (Array.isArray(group.participants)) this.#actualizarIndice(group.participants);
       }
     };
 
@@ -237,13 +209,7 @@ export class LidResolver {
   }
 
   #guardarEnSignalRepository(pares) {
-    try {
-      if (this.#sock.signalRepository?.lidMapping?.storeLIDPNMappings) {
-        this.#sock.signalRepository.lidMapping
-          .storeLIDPNMappings(pares)
-          .catch(() => {});
-      }
-    } catch (_) {}
+    this.#sock.signalRepository?.lidMapping?.storeLIDPNMappings?.(pares)?.catch(() => {});
   }
 
   #actualizarIndice(contactos) {
@@ -259,12 +225,12 @@ export class LidResolver {
         if (jidLimpio) {
           this.#setIndice(lid, jidLimpio);
           this.#cache.set(lid, jidLimpio);
-          nuevosPares.push({ lid, jidLimpio });
+          nuevosPares.push({ lid, pn: jidLimpio });
         }
       }
     }
 
-    if (nuevosPares.length > 0) {
+    if (nuevosPares.length) {
       this.#limpiarExcesoIndice();
       this.#guardarEnSignalRepository(nuevosPares);
     }
@@ -276,18 +242,15 @@ export class LidResolver {
     let deleted = 0;
     for (const lid of this.#reverseIndex.keys()) {
       this.#reverseIndex.delete(lid);
-      deleted++;
-      if (deleted >= toDelete) break;
+      if (++deleted >= toDelete) break;
     }
   }
 
   #purgarInactivos() {
-    if (this.#reverseIndex.size === 0) return;
+    if (!this.#reverseIndex.size) return;
     const now = Date.now();
     for (const [lid, entry] of this.#reverseIndex) {
-      if (now - entry.lastSeen > this.#indexTtl) {
-        this.#reverseIndex.delete(lid);
-      }
+      if (now - entry.lastSeen > this.#indexTtl) this.#reverseIndex.delete(lid);
     }
   }
 
@@ -309,7 +272,6 @@ export class LidResolver {
     entry.lastSeen = Date.now();
     this.#reverseIndex.delete(lid);
     this.#reverseIndex.set(lid, entry);
-    
     return entry.jid;
   }
 
@@ -329,7 +291,7 @@ export class LidResolver {
       }
     }
 
-    if (nuevosPares.length > 0) {
+    if (nuevosPares.length) {
       this.#limpiarExcesoIndice();
       this.#guardarEnSignalRepository(nuevosPares);
     }
@@ -348,34 +310,27 @@ export class LidResolver {
   }
 
   sincronizarDesdeStore(forzar = false) {
-    try {
-      if ((this.#sincronizado && !forzar) || !this.#store) return;
-      if (typeof this.#store !== "object") return;
+    if ((this.#sincronizado && !forzar) || typeof this.#store !== "object" || !this.#store) return;
+    let hayDatos = false;
 
-      let hayDatos = false;
+    if (this.#store.contacts) {
+      const contactos = Object.values(this.#store.contacts);
+      if (contactos.length) {
+        this.#actualizarIndice(contactos);
+        hayDatos = true;
+      }
+    }
 
-      if (this.#store.contacts) {
-        const contactos = Object.values(this.#store.contacts);
-        if (contactos.length > 0) {
-          this.#actualizarIndice(contactos);
+    if (this.#store.chats) {
+      for (const chat of Object.values(this.#store.chats)) {
+        if (Array.isArray(chat.participants) && chat.participants.length) {
+          this.#actualizarIndice(chat.participants);
           hayDatos = true;
         }
       }
+    }
 
-      if (this.#store.chats) {
-        const chats = Object.values(this.#store.chats);
-        for (const chat of chats) {
-          if (Array.isArray(chat.participants) && chat.participants.length > 0) {
-            this.#actualizarIndice(chat.participants);
-            hayDatos = true;
-          }
-        }
-      }
-
-      if (hayDatos) {
-        this.#sincronizado = true;
-      }
-    } catch (_) {}
+    if (hayDatos) this.#sincronizado = true;
   }
 
   async resolver(id) {
@@ -393,20 +348,17 @@ export class LidResolver {
     }
 
     try {
-      const repo = this.#sock.signalRepository?.lidMapping;
-      if (repo?.getPNForLID) {
-        const pn = await repo.getPNForLID(id);
-        if (pn) {
-          const jidReal = limpiarJid(pn);
-          if (jidReal) {
-            this.#limpiarExcesoIndice();
-            this.#setIndice(id, jidReal);
-            this.#cache.set(id, jidReal);
-            return jidReal;
-          }
+      const pn = await this.#sock.signalRepository?.lidMapping?.getPNForLID?.(id);
+      if (pn) {
+        const jidReal = limpiarJid(pn);
+        if (jidReal) {
+          this.#limpiarExcesoIndice();
+          this.#setIndice(id, jidReal);
+          this.#cache.set(id, jidReal);
+          return jidReal;
         }
       }
-    } catch (_) {}
+    } catch {}
 
     return null;
   }
@@ -435,33 +387,29 @@ export class LidResolver {
       pendientes.push(id);
     }
 
-    if (pendientes.length === 0) return resultMap;
+    if (!pendientes.length) return resultMap;
 
     try {
-      const repo = this.#sock.signalRepository?.lidMapping;
-      if (repo?.getPNsForLIDs) {
-        const mappings = await repo.getPNsForLIDs(pendientes);
-        if (Array.isArray(mappings)) {
-          for (const { lid, pn } of mappings) {
-            if (!lid || !pn) continue;
-            const jidReal = limpiarJid(pn);
-            if (jidReal) {
-              this.#limpiarExcesoIndice();
-              this.#setIndice(lid, jidReal);
-              this.#cache.set(lid, jidReal);
-              resultMap.set(lid, jidReal);
-            }
+      const mappings = await this.#sock.signalRepository?.lidMapping?.getPNsForLIDs?.(pendientes);
+      if (Array.isArray(mappings)) {
+        for (const { lid, pn } of mappings) {
+          if (!lid || !pn) continue;
+          const jidReal = limpiarJid(pn);
+          if (jidReal) {
+            this.#limpiarExcesoIndice();
+            this.#setIndice(lid, jidReal);
+            this.#cache.set(lid, jidReal);
+            resultMap.set(lid, jidReal);
           }
         }
       }
-    } catch (_) {}
+    } catch {}
 
     pendientes = pendientes.filter((id) => !resultMap.has(id));
 
     for (let i = 0; i < pendientes.length; i += concurrency) {
-      const chunk = pendientes.slice(i, i + concurrency);
       await Promise.all(
-        chunk.map(async (id) => {
+        pendientes.slice(i, i + concurrency).map(async (id) => {
           const res = await this.resolver(id);
           if (res) resultMap.set(id, res);
         })
@@ -473,32 +421,22 @@ export class LidResolver {
 
   async resolverParticipantes(participants) {
     if (!Array.isArray(participants)) return new Map();
-
-    const lids = participants
-      .map((p) => (typeof p === "string" ? p : p?.id || p?.lid))
-      .filter((id) => esLid(id));
-
-    return this.resolverLote(lids);
+    return this.resolverLote(participants.map((p) => (typeof p === "string" ? p : p?.id || p?.lid)).filter(esLid));
   }
 
-  #dispararOnJoin({ groupId, lid, jid }) {
+  #dispararOnJoin(data) {
     for (const cb of this.#joinCallbacks) {
-      try {
-        cb({ groupId, lid, jid });
-      } catch (_) {}
+      try { cb(data); } catch {}
     }
   }
 
   onJoin(callback) {
-    if (typeof callback !== "function") return;
-    this.#joinCallbacks.push(callback);
+    if (typeof callback === "function") this.#joinCallbacks.push(callback);
   }
 
   destroy() {
-    if (this.#purgeInterval) {
-      clearInterval(this.#purgeInterval);
-      this.#purgeInterval = null;
-    }
+    if (this.#purgeInterval) clearInterval(this.#purgeInterval);
+    this.#purgeInterval = null;
     this.#cache.destroy();
     this.#reverseIndex.clear();
     this.#sock.ev.off("contacts.upsert", this.#handler);
@@ -513,4 +451,4 @@ export class LidResolver {
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
     this.#joinCallbacks = [];
   }
-}
+  }
