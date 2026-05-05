@@ -6,7 +6,10 @@ const SUFIJO_LID_HOSTED = "@hosted.lid";
 const SUFIJO_JID = "@s.whatsapp.net";
 
 function esLid(valor) {
-  return typeof valor === "string" && (valor.endsWith(SUFIJO_LID) || valor.endsWith(SUFIJO_LID_HOSTED));
+  return (
+    typeof valor === "string" &&
+    (valor.endsWith(SUFIJO_LID) || valor.endsWith(SUFIJO_LID_HOSTED))
+  );
 }
 
 function esJidResuelto(valor) {
@@ -54,7 +57,11 @@ export class LidResolver {
 
         if (sender && alt) {
           const lid = esLid(sender) ? sender : esLid(alt) ? alt : null;
-          const pn = esJidResuelto(sender) ? sender : esJidResuelto(alt) ? alt : null;
+          const pn = esJidResuelto(sender)
+            ? sender
+            : esJidResuelto(alt)
+            ? alt
+            : null;
 
           if (lid && pn) {
             const jidLimpio = limpiarJid(pn);
@@ -105,6 +112,7 @@ export class LidResolver {
 
     this.#groupParticipantHandler = ({ author, authorPn, participants }) => {
       const nuevosPares = [];
+
       if (author && authorPn) {
         const lid = esLid(author) ? author : null;
         const jidLimpio = lid ? limpiarJid(authorPn) : null;
@@ -114,16 +122,37 @@ export class LidResolver {
           nuevosPares.push({ lid, pn: jidLimpio });
         }
       }
-      if (nuevosPares.length > 0) {
-          this.#limpiarExcesoIndice();
-          this.#guardarEnSignalRepository(nuevosPares);
-      }
+
       if (Array.isArray(participants)) {
-         this.#actualizarIndice(participants);
+        for (const p of participants) {
+          if (p.lid && p.phoneNumber) {
+            const jidLimpio = limpiarJid(p.phoneNumber);
+            if (jidLimpio) {
+              this.#reverseIndex.set(p.lid, jidLimpio);
+              this.#cache.set(p.lid, jidLimpio);
+              nuevosPares.push({ lid: p.lid, pn: jidLimpio });
+            }
+          } else if (esLid(p.id || p.lid)) {
+            const lid = p.lid || p.id;
+            if (!this.#reverseIndex.has(lid) && !this.#cache.has(lid)) {
+              this.resolver(lid).catch(() => {});
+            }
+          }
+        }
+      }
+
+      if (nuevosPares.length > 0) {
+        this.#limpiarExcesoIndice();
+        this.#guardarEnSignalRepository(nuevosPares);
       }
     };
 
-    this.#groupJoinRequestHandler = ({ author, authorPn, participant, participantPn }) => {
+    this.#groupJoinRequestHandler = ({
+      author,
+      authorPn,
+      participant,
+      participantPn,
+    }) => {
       const nuevosPares = [];
       if (author && authorPn) {
         const jid = limpiarJid(authorPn);
@@ -131,9 +160,10 @@ export class LidResolver {
       }
       if (participant && participantPn) {
         const jid = limpiarJid(participantPn);
-        if (esLid(participant) && jid) nuevosPares.push({ lid: participant, pn: jid });
+        if (esLid(participant) && jid)
+          nuevosPares.push({ lid: participant, pn: jid });
       }
-      
+
       if (nuevosPares.length > 0) {
         for (const { lid, pn } of nuevosPares) {
           this.#reverseIndex.set(lid, pn);
@@ -146,14 +176,23 @@ export class LidResolver {
 
     this.#groupMemberTagHandler = ({ participant, participantAlt }) => {
       if (!participant || !participantAlt) return;
-      const lid = esLid(participant) ? participant : esLid(participantAlt) ? participantAlt : null;
-      const pn = esJidResuelto(participant) ? participant : esJidResuelto(participantAlt) ? participantAlt : null;
-      
+
+      const lid = esLid(participant)
+        ? participant
+        : esLid(participantAlt)
+        ? participantAlt
+        : null;
+      const pn = esJidResuelto(participant)
+        ? participant
+        : esJidResuelto(participantAlt)
+        ? participantAlt
+        : null;
+
       if (!lid || !pn) return;
-      
+
       const jidLimpio = limpiarJid(pn);
       if (!jidLimpio) return;
-      
+
       this.#reverseIndex.set(lid, jidLimpio);
       this.#cache.set(lid, jidLimpio);
       this.#limpiarExcesoIndice();
@@ -163,9 +202,9 @@ export class LidResolver {
     this.#groupsUpsertHandler = (groups) => {
       if (!Array.isArray(groups)) return;
       for (const group of groups) {
-         if (Array.isArray(group.participants)) {
-            this.#actualizarIndice(group.participants);
-         }
+        if (Array.isArray(group.participants)) {
+          this.#actualizarIndice(group.participants);
+        }
       }
     };
 
@@ -189,10 +228,11 @@ export class LidResolver {
   #guardarEnSignalRepository(pares) {
     try {
       if (this.#sock.signalRepository?.lidMapping?.storeLIDPNMappings) {
-        this.#sock.signalRepository.lidMapping.storeLIDPNMappings(pares).catch(() => {});
+        this.#sock.signalRepository.lidMapping
+          .storeLIDPNMappings(pares)
+          .catch(() => {});
       }
-    } catch (e) {
-    }
+    } catch (_) {}
   }
 
   #actualizarIndice(contactos) {
@@ -200,11 +240,11 @@ export class LidResolver {
     const nuevosPares = [];
 
     for (const c of contactos) {
-      let lid = c.lid || (esLid(c.id) ? c.id : null);
-      let jid = c.phoneNumber || (esJidResuelto(c.id) ? c.id : null);
+      const lid = c.lid || (esLid(c.id) ? c.id : null);
+      const jidRaw = c.phoneNumber || (esJidResuelto(c.id) ? c.id : null);
 
-      if (lid && jid) {
-        const jidLimpio = limpiarJid(jid);
+      if (lid && jidRaw) {
+        const jidLimpio = limpiarJid(jidRaw);
         if (jidLimpio) {
           this.#reverseIndex.set(lid, jidLimpio);
           this.#cache.set(lid, jidLimpio);
@@ -214,17 +254,19 @@ export class LidResolver {
     }
 
     if (nuevosPares.length > 0) {
-       this.#limpiarExcesoIndice();
-       this.#guardarEnSignalRepository(nuevosPares);
+      this.#limpiarExcesoIndice();
+      this.#guardarEnSignalRepository(nuevosPares);
     }
   }
 
   #limpiarExcesoIndice() {
     if (this.#reverseIndex.size >= this.#maxIndexSize) {
-      const keys = Array.from(this.#reverseIndex.keys());
-      const toDelete = keys.slice(0, Math.floor(this.#maxIndexSize * 0.1));
-      for (const key of toDelete) {
+      const toDelete = Math.floor(this.#maxIndexSize * 0.1);
+      let count = 0;
+      for (const key of this.#reverseIndex.keys()) {
+        if (count >= toDelete) break;
         this.#reverseIndex.delete(key);
+        count++;
       }
     }
   }
@@ -256,27 +298,35 @@ export class LidResolver {
       cache: this.#cache.getStats(),
       index: {
         size: this.#reverseIndex.size,
-        maxSize: this.#maxIndexSize
+        maxSize: this.#maxIndexSize,
       },
-      sincronizado: this.#sincronizado
+      sincronizado: this.#sincronizado,
     };
   }
 
   sincronizarDesdeStore(forzar = false) {
     try {
       if ((this.#sincronizado && !forzar) || !this.#store) return;
+      if (typeof this.#store !== "object") return;
 
-      if (typeof this.#store !== 'object' || !this.#store.contacts) {
-        return;
+      if (this.#store.contacts) {
+        const contactos = Object.values(this.#store.contacts);
+        if (contactos.length > 0) {
+          this.#actualizarIndice(contactos);
+          this.#sincronizado = true;
+        }
       }
 
-      const contactos = Object.values(this.#store.contacts);
-      if (contactos.length > 0) {
-        this.#actualizarIndice(contactos);
+      if (this.#store.chats) {
+        const chats = Object.values(this.#store.chats);
+        for (const chat of chats) {
+          if (Array.isArray(chat.participants) && chat.participants.length > 0) {
+            this.#actualizarIndice(chat.participants);
+          }
+        }
         this.#sincronizado = true;
       }
-    } catch (error) {
-    }
+    } catch (_) {}
   }
 
   async resolver(id) {
@@ -307,8 +357,8 @@ export class LidResolver {
           }
         }
       }
-    } catch (e) {
-    }
+    } catch (_) {}
+
     return null;
   }
 
@@ -323,15 +373,17 @@ export class LidResolver {
       const fromCache = this.#cache.get(id);
       if (fromCache) {
         resultMap.set(id, fromCache);
-      } else {
-        const fromIndex = this.#reverseIndex.get(id);
-        if (fromIndex) {
-          this.#cache.set(id, fromIndex);
-          resultMap.set(id, fromIndex);
-        } else {
-          pendientes.push(id);
-        }
+        continue;
       }
+
+      const fromIndex = this.#reverseIndex.get(id);
+      if (fromIndex) {
+        this.#cache.set(id, fromIndex);
+        resultMap.set(id, fromIndex);
+        continue;
+      }
+
+      pendientes.push(id);
     }
 
     if (pendientes.length === 0) return resultMap;
@@ -339,32 +391,32 @@ export class LidResolver {
     try {
       const repo = this.#sock.signalRepository?.lidMapping;
       if (repo?.getPNsForLIDs) {
-        const mapeosLote = await repo.getPNsForLIDs(pendientes);
-        if (mapeosLote && Array.isArray(mapeosLote)) {
-          for (const { lid, pn } of mapeosLote) {
-            if (pn) {
-              const jidReal = limpiarJid(pn);
-              if (jidReal) {
-                this.#limpiarExcesoIndice();
-                this.#reverseIndex.set(lid, jidReal);
-                this.#cache.set(lid, jidReal);
-                resultMap.set(lid, jidReal);
-              }
+        const mappings = await repo.getPNsForLIDs(pendientes);
+        if (Array.isArray(mappings)) {
+          for (const { lid, pn } of mappings) {
+            if (!lid || !pn) continue;
+            const jidReal = limpiarJid(pn);
+            if (jidReal) {
+              this.#limpiarExcesoIndice();
+              this.#reverseIndex.set(lid, jidReal);
+              this.#cache.set(lid, jidReal);
+              resultMap.set(lid, jidReal);
             }
           }
         }
       }
-    } catch (e) {
-    }
+    } catch (_) {}
 
-    pendientes = pendientes.filter(id => !resultMap.has(id));
+    pendientes = pendientes.filter((id) => !resultMap.has(id));
 
     for (let i = 0; i < pendientes.length; i += concurrency) {
       const chunk = pendientes.slice(i, i + concurrency);
-      await Promise.all(chunk.map(async (id) => {
-        const res = await this.resolver(id);
-        if (res) resultMap.set(id, res);
-      }));
+      await Promise.all(
+        chunk.map(async (id) => {
+          const res = await this.resolver(id);
+          if (res) resultMap.set(id, res);
+        })
+      );
     }
 
     return resultMap;
@@ -384,5 +436,4 @@ export class LidResolver {
     this.#sock.ev.off("groups.upsert", this.#groupsUpsertHandler);
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
   }
-                           }
-      
+}
