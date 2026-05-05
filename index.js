@@ -47,6 +47,8 @@ export function pluginLid(sock, options = {}) {
     },
 
     destroy: () => resolver.destroy(),
+
+    onJoin: (callback) => resolver.onJoin(callback),
   };
 
   return sock;
