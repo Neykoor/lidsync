@@ -1,4 +1,5 @@
 import { LidCache } from "./cache.js";
+import { esNumeroValido } from "./validator.js";
 
 const SUFIJO_LID = "@lid";
 const SUFIJO_LID_HOSTED = "@hosted.lid";
@@ -15,7 +16,7 @@ function esJidResuelto(valor) {
 function limpiarJid(valor) {
   if (typeof valor !== "string") return null;
   const numero = valor.split("@")[0].split(":")[0].replace(/\D/g, "");
-  if (!numero || numero.length < 5) return null;
+  if (!esNumeroValido(numero)) return null;
   return `${numero}${SUFIJO_JID}`;
 }
 
@@ -383,4 +384,5 @@ export class LidResolver {
     this.#sock.ev.off("groups.upsert", this.#groupsUpsertHandler);
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
   }
-}
+                           }
+      
