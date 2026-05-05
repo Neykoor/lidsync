@@ -8,7 +8,6 @@ export function pluginLid(sock, options = {}) {
       try {
         return await resolver.resolver(id);
       } catch (error) {
-        console.warn("[LidSync] Error:", error.message);
         return null;
       }
     },
@@ -20,7 +19,6 @@ export function pluginLid(sock, options = {}) {
       try {
         return await resolver.resolverLote(ids, opts);
       } catch (error) {
-        console.warn("[LidSync] Batch Error:", error.message);
         return new Map();
       }
     },
@@ -29,7 +27,6 @@ export function pluginLid(sock, options = {}) {
       try {
         return await resolver.resolverParticipantes(participants);
       } catch (error) {
-        console.warn("[LidSync] resolveParticipants Error:", error.message);
         return new Map();
       }
     },
