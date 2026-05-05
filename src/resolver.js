@@ -48,9 +48,8 @@ export class LidResolver {
     this.#store = options.store || null;
     this.#cache = new LidCache(options.cache || {});
     this.#maxIndexSize = Math.max(1000, options.maxIndexSize || 50000);
-    this.#indexTtl = options.indexTtlMs ?? 1000 * 60 * 60 * 6; // 6h por defecto
+    this.#indexTtl = options.indexTtlMs ?? 1000 * 60 * 60 * 6;
 
-    // Purge periódico de inactivos (cada 30 min)
     const purgeInterval = options.indexPurgeIntervalMs ?? 1000 * 60 * 30;
     this.#purgeInterval = setInterval(() => this.#purgarInactivos(), purgeInterval);
     if (this.#purgeInterval.unref) this.#purgeInterval.unref();
@@ -273,12 +272,12 @@ export class LidResolver {
 
   #limpiarExcesoIndice() {
     if (this.#reverseIndex.size < this.#maxIndexSize) return;
-    // Ordenar por lastSeen y borrar el 10% más inactivo
     const toDelete = Math.floor(this.#maxIndexSize * 0.1);
-    const sorted = [...this.#reverseIndex.entries()]
-      .sort((a, b) => a[1].lastSeen - b[1].lastSeen);
-    for (let i = 0; i < toDelete && i < sorted.length; i++) {
-      this.#reverseIndex.delete(sorted[i][0]);
+    let deleted = 0;
+    for (const lid of this.#reverseIndex.keys()) {
+      this.#reverseIndex.delete(lid);
+      deleted++;
+      if (deleted >= toDelete) break;
     }
   }
 
@@ -295,20 +294,22 @@ export class LidResolver {
   #setIndice(lid, jid) {
     const existing = this.#reverseIndex.get(lid);
     this.#reverseIndex.set(lid, { jid, lastSeen: Date.now() });
-    // Solo reportar como nuevo si no existía antes
     return !existing;
   }
 
   #getIndice(lid) {
     const entry = this.#reverseIndex.get(lid);
     if (!entry) return null;
-    // Verificar TTL
+    
     if (Date.now() - entry.lastSeen > this.#indexTtl) {
       this.#reverseIndex.delete(lid);
       return null;
     }
-    // Actualizar lastSeen al consultar (LRU)
+    
     entry.lastSeen = Date.now();
+    this.#reverseIndex.delete(lid);
+    this.#reverseIndex.set(lid, entry);
+    
     return entry.jid;
   }
 
@@ -512,6 +513,4 @@ export class LidResolver {
     this.#sock.ev.off("groups.update", this.#groupsUpsertHandler);
     this.#joinCallbacks = [];
   }
-                                    }
-
-      
+}
